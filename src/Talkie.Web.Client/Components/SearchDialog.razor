@@ -4,7 +4,7 @@
 <MudDialog>
     <TitleContent><MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.ManageSearch" Class="mr-2" Style="vertical-align:middle" />Search messages</MudText></TitleContent>
     <DialogContent>
-        <MudTextField T="string" @bind-Value="_query" Label="What are you looking for?" Variant="Variant.Outlined" AutoFocus="true" Immediate="false"
+        <MudTextField T="string" @bind-Value="_query" Label="What are you looking for?" Variant="Variant.Outlined" AutoFocus="true" Immediate="true"
                       Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Rounded.Search" OnAdornmentClick="SearchAsync" OnKeyDown="OnKeyDown"
                       HelperText="Semantic search: finds messages with similar meaning, not only exact words." />
         @if (_busy)

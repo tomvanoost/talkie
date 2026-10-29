@@ -9,6 +9,8 @@ namespace Talkie.Api.Modules.Chat;
 /// <summary>Direct messages, group chats, attachments, reactions and semantic message search.</summary>
 public sealed class ChatModule : IModule
 {
+    private const double MinSearchScore = 0.1;
+
     public void Register(IServiceCollection services, IConfiguration configuration) => services.AddScoped<ChatService>();
 
     public void MapEndpoints(IEndpointRouteBuilder app)
@@ -239,6 +241,7 @@ public sealed class ChatModule : IModule
     private static async Task<List<SearchResultDto>> Search(string? q, CurrentUser current, ChatService chat, CancellationToken ct)
     {
         var me = await current.GetAsync(ct);
-        return await chat.SearchAsync(me, q ?? "", 20, ct);
+        // Only show hits that are at least somewhat similar; the AI assistant applies its own thresholds.
+        return (await chat.SearchAsync(me, q ?? "", 20, ct)).Where(r => r.Score >= MinSearchScore).ToList();
     }
 }

@@ -15,8 +15,9 @@
         <div class="chat-sidebar-header">
             <span>Direct Messages</span>
             <MudMenu Icon="@Icons.Material.Rounded.Add" Size="Size.Small" Color="Color.Primary" AnchorOrigin="Origin.BottomLeft" Dense="true" AriaLabel="New conversation">
-                <MudMenuItem Icon="@Icons.Material.Rounded.Chat" OnClick="NewDirectAsync">New message</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Rounded.Groups" OnClick="NewGroupAsync">New group</MudMenuItem>
+                @* Not awaited: the menu only closes once OnClick returns, and the dialog stays open much longer. *@
+                <MudMenuItem Icon="@Icons.Material.Rounded.Chat" OnClick="() => { _ = NewDirectAsync(); }">New message</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Rounded.Groups" OnClick="() => { _ = NewGroupAsync(); }">New group</MudMenuItem>
             </MudMenu>
         </div>
         @if (_conversations.Count == 0)
@@ -201,6 +202,7 @@
         {
             await LoadConversationsAsync();
             SelectConversation(_conversations.FirstOrDefault(x => x.Id == c.Id) ?? c);
+            StateHasChanged();
         }
     }
 
@@ -211,6 +213,7 @@
         {
             await LoadConversationsAsync();
             SelectConversation(_conversations.FirstOrDefault(x => x.Id == c.Id) ?? c);
+            StateHasChanged();
         }
     }
 

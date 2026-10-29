@@ -40,7 +40,7 @@
         {
             <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" ListClass="pa-2" PopoverClass="user-menu">
                 <ActivatorContent>
-                    <div style="cursor:pointer" title="@me.DisplayName">
+                    <div style="cursor:pointer" title="@me.DisplayName" role="button" aria-label="Account menu" @onclick="e => context.ToggleAsync(e)">
                         <UserAvatar Url="@me.AvatarUrl" Name="@me.DisplayName" Effect="@me.ActiveEffect" Px="38" />
                     </div>
                 </ActivatorContent>
