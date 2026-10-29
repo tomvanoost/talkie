@@ -1,0 +1,58 @@
+@* Semantic search across every message the user can read (SQL Server 2025 vector search). *@
+@inject ApiClient Api
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.ManageSearch" Class="mr-2" Style="vertical-align:middle" />Search messages</MudText></TitleContent>
+    <DialogContent>
+        <MudTextField T="string" @bind-Value="_query" Label="What are you looking for?" Variant="Variant.Outlined" AutoFocus="true" Immediate="true"
+                      Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Rounded.Search" OnAdornmentClick="SearchAsync" OnKeyDown="OnKeyDown"
+                      HelperText="Semantic search: finds messages with similar meaning, not only exact words." />
+        @if (_busy)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-3" />
+        }
+        @if (_results is not null)
+        {
+            @if (_results.Count == 0)
+            {
+                <MudText Class="mt-4" Color="Color.Secondary">No messages found.</MudText>
+            }
+            <MudList T="SearchResultDto" Class="mt-2" Dense="true">
+                @foreach (var r in _results)
+                {
+                    <MudListItem T="SearchResultDto" OnClick="() => MudDialog.Close(DialogResult.Ok(r))">
+                        <div class="d-flex gap-3 align-start">
+                            <UserAvatar Url="@r.Message.SenderAvatarUrl" Name="@r.Message.SenderName" Px="32" />
+                            <div style="min-width:0">
+                                <div><b>@r.Message.SenderName</b> <span style="color:#8093AF;font-size:12px">in @r.Location · @r.Message.CreatedAt.ToLocalTime().ToString("d MMM HH:mm")</span></div>
+                                <div style="white-space:pre-wrap;word-break:break-word">@r.Message.Content</div>
+                            </div>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="ml-auto">@((r.Score * 100).ToString("0"))%</MudChip>
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    private string _query = "";
+    private List<SearchResultDto>? _results;
+    private bool _busy;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_query)) return;
+        _busy = true;
+        try { _results = await Api.GetAsync<List<SearchResultDto>>($"/api/search?q={Uri.EscapeDataString(_query)}"); }
+        catch (ApiException) { _results = []; }
+        finally { _busy = false; }
+    }
+}

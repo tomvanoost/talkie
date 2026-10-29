@@ -1,0 +1,78 @@
+@* An avatar (picture or initials) wrapped in the user's avatar effect. *@
+<span class="fx-wrap fx-@(Effect ?? "none")" style="width:@(Px)px;height:@(Px)px">
+    @switch (Effect)
+    {
+        case "lightning":
+            @for (var i = 1; i <= 4; i++)
+            {
+                <svg class="fx fx@(i)" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6z" /></svg>
+            }
+            break;
+        case "sparkles":
+            @for (var i = 1; i <= 4; i++)
+            {
+                <svg class="fx fx@(i)" viewBox="0 0 24 24"><path d="M12 0c1 7 5 11 12 12-7 1-11 5-12 12-1-7-5-11-12-12 7-1 11-5 12-12z" /></svg>
+            }
+            break;
+        case "frost":
+            @for (var i = 1; i <= 2; i++)
+            {
+                <svg class="fx fx@(i)" viewBox="0 0 24 24"><path d="M12 2v20M3.3 7l17.4 10M3.3 17 20.7 7M9 4l3 2 3-2M9 20l3-2 3 2" /></svg>
+            }
+            break;
+        case "hearts":
+            @for (var i = 1; i <= 3; i++)
+            {
+                <svg class="fx fx@(i)" viewBox="0 0 24 24"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z" /></svg>
+            }
+            break;
+        case "galaxy":
+            <span class="orbit"><i></i></span>
+            <span class="orbit o2"><i></i></span>
+            break;
+    }
+    <MudAvatar Style="@($"width:{Px}px;height:{Px}px;font-size:{Px * 0.4}px;background:{Background};color:#fff;font-weight:800")">
+        @if (!string.IsNullOrEmpty(Url))
+        {
+            <MudImage Src="@Url" Alt="@Name" ObjectFit="ObjectFit.Cover" />
+        }
+        else
+        {
+            @Initials
+        }
+    </MudAvatar>
+</span>
+
+@code {
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string? Name { get; set; }
+    [Parameter] public string? Effect { get; set; }
+    [Parameter] public int Px { get; set; } = 40;
+
+    private string Initials
+    {
+        get
+        {
+            var parts = (Name ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length switch
+            {
+                0 => "?",
+                1 => parts[0][..1].ToUpperInvariant(),
+                _ => (parts[0][..1] + parts[^1][..1]).ToUpperInvariant(),
+            };
+        }
+    }
+
+    // A stable pastel color per name.
+    private string Background
+    {
+        get
+        {
+            var hash = (Name ?? "").Aggregate(17, (h, c) => h * 31 + c);
+            return TalkieTheme.RoleColors[Math.Abs(hash % TalkieTheme.RoleColors.Length)] switch
+            {
+                var c => $"linear-gradient(135deg, {c}, #5B9BEA)",
+            };
+        }
+    }
+}

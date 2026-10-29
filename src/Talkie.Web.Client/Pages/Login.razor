@@ -1,0 +1,156 @@
+@page "/login"
+@layout AuthLayout
+@inject ApiClient Api
+@inject SessionState Session
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Talkie – Login</PageTitle>
+
+<MudPaper Class="auth-card pa-8" Elevation="4">
+    <div class="auth-logo">
+        <img src="favicon.svg" alt="" />
+        <span class="name">@Session.Settings.AppName</span>
+    </div>
+    <MudText Align="Align.Center" Color="Color.Secondary" Class="mb-6">Chat, play and work together.</MudText>
+
+    @if (!string.IsNullOrWhiteSpace(Session.Settings.Announcement))
+    {
+        <MudAlert Severity="Severity.Info" Dense="true" Class="mb-4">@Session.Settings.Announcement</MudAlert>
+    }
+
+    <MudToggleGroup T="string" @bind-Value="_mode" Color="Color.Primary" FixedContent="true" Class="mb-6" Style="width:100%">
+        <MudToggleItem Value="@("login")" Text="Login" />
+        <MudToggleItem Value="@("create")" Text="Create Company" Disabled="!Session.Settings.AllowCompanyCreation" />
+    </MudToggleGroup>
+
+    @if (_mode == "login")
+    {
+        <form @onsubmit="LoginAsync" @onsubmit:preventDefault>
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_email" Label="E-mail" Variant="Variant.Outlined" InputType="InputType.Email" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Email" AutoFocus="true" Immediate="true" />
+                <MudTextField @bind-Value="_password" Label="Password" Variant="Variant.Outlined" InputType="@(_showPassword ? InputType.Text : InputType.Password)" Adornment="Adornment.End"
+                              AdornmentIcon="@(_showPassword ? Icons.Material.Rounded.VisibilityOff : Icons.Material.Rounded.Visibility)" OnAdornmentClick="() => _showPassword = !_showPassword" Immediate="true" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="_busy" Class="mt-2">
+                    @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Login
+                </MudButton>
+            </MudStack>
+        </form>
+    }
+    else
+    {
+        <form @onsubmit="CreateCompanyAsync" @onsubmit:preventDefault>
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_companyName" Label="Company name" Variant="Variant.Outlined" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Business" MaxLength="100" Immediate="true"
+                              Error="IsReservedName" ErrorText="The name Talkie is reserved." />
+                <MudTextField @bind-Value="_ownerEmail" Label="Owner e-mail" Variant="Variant.Outlined" InputType="InputType.Email" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Email" Immediate="true" />
+                <MudTextField @bind-Value="_ownerPassword" Label="Owner password" Variant="Variant.Outlined" InputType="InputType.Password" HelperText="At least 8 characters with a letter and a digit" Immediate="true" />
+                <div class="d-flex gap-3">
+                    <MudTextField @bind-Value="_username" Label="Username" Variant="Variant.Outlined" Immediate="true" />
+                    <MudTextField @bind-Value="_displayName" Label="Display name" Variant="Variant.Outlined" Immediate="true" />
+                </div>
+
+                <div>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.subtitle2">Roles <MudText Typo="Typo.caption" Color="Color.Secondary" Inline="true">(optional, can be edited later)</MudText></MudText>
+                        <MudTooltip Text="Add role">
+                            <MudIconButton Icon="@Icons.Material.Rounded.Add" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small" OnClick="AddRoleAsync" aria-label="Add role" />
+                        </MudTooltip>
+                    </div>
+                    <div class="d-flex flex-wrap gap-1 mt-2">
+                        @if (_roles.Count == 0)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">No roles yet. Click + to create one.</MudText>
+                        }
+                        @foreach (var role in _roles)
+                        {
+                            <MudChip T="string" Class="role-chip" Style="@($"background:{role.Color};color:#24334A")" OnClick="() => EditRoleAsync(role)" OnClose="() => _roles.Remove(role)">@role.Name</MudChip>
+                        }
+                    </div>
+                </div>
+
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" FullWidth="true" Disabled="_busy || IsReservedName" Class="mt-2">
+                    @if (_busy) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Create company
+                </MudButton>
+            </MudStack>
+        </form>
+    }
+</MudPaper>
+
+@code {
+    private string _mode = "login";
+    private bool _busy;
+    private bool _showPassword;
+
+    private string _email = "";
+    private string _password = "";
+
+    private string _companyName = "";
+    private string _ownerEmail = "";
+    private string _ownerPassword = "";
+    private string _username = "";
+    private string _displayName = "";
+    private readonly List<RoleInput> _roles = [];
+
+    private bool IsReservedName => string.Equals(_companyName.Trim(), TalkieConstants.DefaultCompanyName, StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.InitializeAsync();
+        if (Session.IsLoggedIn) Navigation.NavigateTo("/", replace: true);
+    }
+
+    private async Task LoginAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var response = await Api.PostAsync<AuthResponse>("/api/auth/login", new LoginRequest(_email, _password));
+            await Session.LoginAsync(response);
+            Navigation.NavigateTo("/");
+        });
+    }
+
+    private async Task CreateCompanyAsync()
+    {
+        await RunAsync(async () =>
+        {
+            var response = await Api.PostAsync<AuthResponse>("/api/auth/companies",
+                new CreateCompanyRequest(_companyName, _ownerEmail, _ownerPassword, _username, _displayName, _roles.ToList()));
+            await Session.LoginAsync(response);
+            Snackbar.Add($"Welcome to Talkie, {response.User.DisplayName}! Your company {response.User.CompanyName} is ready.", Severity.Success);
+            Navigation.NavigateTo("/");
+        });
+    }
+
+    private async Task AddRoleAsync()
+    {
+        if (await RoleDialog.ShowAsync(Dialogs) is { } role)
+        {
+            if (_roles.Any(r => string.Equals(r.Name, role.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                Snackbar.Add("A role with this name already exists.", Severity.Warning);
+                return;
+            }
+            _roles.Add(role);
+        }
+    }
+
+    private async Task EditRoleAsync(RoleInput role)
+    {
+        if (await RoleDialog.ShowAsync(Dialogs, role) is { } updated)
+        {
+            _roles[_roles.IndexOf(role)] = updated;
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try { await action(); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}

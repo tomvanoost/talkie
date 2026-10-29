@@ -1,0 +1,112 @@
+@page "/afk"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – AFK</PageTitle>
+
+<div class="page">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.Bedtime" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">AFK</MudText>
+            <MudText Color="Color.Secondary">Go away from keyboard and earn shards while you're gone.</MudText>
+        </div>
+    </div>
+
+    @if (_status is not { } s)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (!s.IsAfk)
+    {
+        <MudPaper Class="afk-card" Elevation="0">
+            <MudIcon Icon="@Icons.Material.Rounded.NightsStay" Style="font-size:96px" Color="Color.Primary" />
+            <MudText Typo="Typo.h5" Style="font-weight:800" Class="mt-2">Ready for a break?</MudText>
+            <MudText Color="Color.Secondary" Class="mt-1">
+                You earn <b>@(s.ShardsPerMinute * s.Multiplier) shard@(s.ShardsPerMinute * s.Multiplier == 1 ? "" : "s")</b> every minute while you are AFK
+                @if (s.Multiplier > 1) { <span>(x@(s.Multiplier) booster)</span> }.
+            </MudText>
+            @if (_lastSession > 0)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-4" Dense="true">Welcome back! You earned @NumberFormatter.Compact(_lastSession) shards while you were away.</MudAlert>
+            }
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Class="mt-6 px-10" StartIcon="@Icons.Material.Rounded.Bedtime" OnClick="GoAfkAsync" Disabled="_busy">Go AFK</MudButton>
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-4">Total shards: @NumberFormatter.Compact(s.TotalShards)</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Class="afk-card afk-active" Elevation="0">
+            <div class="afk-zzz"><span>z</span><span>z</span><span>Z</span></div>
+            <MudIcon Icon="@Icons.Material.Rounded.Bedtime" Style="font-size:84px;color:#FFE082" />
+            <MudText Typo="Typo.h6" Class="mt-2">You are AFK</MudText>
+            <div class="afk-timer">@Elapsed.ToString(@"hh\:mm\:ss")</div>
+            <MudText Class="mt-2" Style="opacity:.85">Shards earned this session</MudText>
+            <MudText Typo="Typo.h3" Style="font-weight:800"><MudIcon Icon="@Icons.Material.Rounded.Diamond" Style="font-size:36px;vertical-align:middle;color:#9CC9F5" /> @NumberFormatter.Compact(s.ShardsEarnedThisSession)</MudText>
+            <MudText Typo="Typo.caption" Style="opacity:.8">Next shard in @(60 - (int)Elapsed.TotalSeconds % 60)s · @(s.ShardsPerMinute * s.Multiplier)/min</MudText>
+            <MudProgressLinear Value="@(Elapsed.TotalSeconds % 60 / 60 * 100)" Color="Color.Warning" Rounded="true" Class="mt-2 mx-auto" Style="max-width:300px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" Size="Size.Large" Class="mt-6 px-10" StartIcon="@Icons.Material.Rounded.WbSunny" OnClick="StopAfkAsync" Disabled="_busy">Stop AFK</MudButton>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    private AfkStatusDto? _status;
+    private bool _busy;
+    private long _lastSession;
+    private Timer? _tick;
+    private int _ticks;
+
+    private TimeSpan Elapsed => _status?.Since is { } since ? DateTimeOffset.UtcNow - since : TimeSpan.Zero;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+        _tick = new Timer(async _ =>
+        {
+            if (_status?.IsAfk != true) return;
+            // Repaint every second; ask the server for freshly credited shards every 10 seconds.
+            if (++_ticks % 10 == 0) await RefreshAsync();
+            await InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private async Task RefreshAsync()
+    {
+        try { _status = await Api.GetAsync<AfkStatusDto>("/api/afk"); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task GoAfkAsync()
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Go AFK", "Are you sure you want to go AFK?", yesText: "Yes", noText: "No");
+        if (confirm != true) return;
+        _busy = true;
+        try
+        {
+            _status = await Api.PostAsync<AfkStatusDto>("/api/afk/start");
+            _lastSession = 0;
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task StopAfkAsync()
+    {
+        _busy = true;
+        try
+        {
+            _status = await Api.PostAsync<AfkStatusDto>("/api/afk/stop");
+            _lastSession = _status.ShardsEarnedThisSession;
+            await Session.RefreshStatsAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() => _tick?.Dispose();
+}

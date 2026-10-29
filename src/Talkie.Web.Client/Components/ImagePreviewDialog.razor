@@ -1,0 +1,15 @@
+<MudDialog ContentClass="pa-0">
+    <DialogContent>
+        <img src="@Url" alt="@Name" style="max-width:100%;max-height:80vh;display:block;margin:0 auto" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton Href="@Url" Target="_blank" StartIcon="@Icons.Material.Rounded.OpenInNew">Open original</MudButton>
+        <MudButton OnClick="() => MudDialog.Close()">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public string Url { get; set; } = "";
+    [Parameter] public string Name { get; set; } = "";
+}

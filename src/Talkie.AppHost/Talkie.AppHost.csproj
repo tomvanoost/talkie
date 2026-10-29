@@ -1,0 +1,17 @@
+<Project Sdk="Aspire.AppHost.Sdk/13.6.4">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UserSecretsId>talkie-apphost-3e8a7f10</UserSecretsId>
+    <!-- The AppHost uses the Dashboard/DCP NuGet packages rather than the Aspire CLI bundle. -->
+    <NoWarn>$(NoWarn);ASPIRE010</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Hosting.SqlServer" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.MailPit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Talkie.MigrationService\Talkie.MigrationService.csproj" />
+    <ProjectReference Include="..\Talkie.Api\Talkie.Api.csproj" />
+    <ProjectReference Include="..\Talkie.Web\Talkie.Web.csproj" />
+  </ItemGroup>
+</Project>

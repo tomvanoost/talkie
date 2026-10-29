@@ -1,0 +1,126 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SessionState Session
+@inject ChatHubClient Hub
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+<MudLayout>
+    <MudAppBar Elevation="0" Class="talkie-appbar" Dense="false">
+        <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="() => _drawerOpen = !_drawerOpen" aria-label="Toggle menu" />
+        <div class="talkie-brand ml-2">
+            <img src="favicon.svg" alt="" />
+            <span>@Session.Settings.AppName</span>
+        </div>
+        <MudSpacer />
+
+        @if (Session.Stats is { } stats)
+        {
+            <MudTooltip Text="@($"${stats.Money:N0}")">
+                <MudChip T="string" Class="wallet-chip" Color="Color.Success" Variant="Variant.Text" Icon="@Icons.Material.Rounded.Payments" OnClick="@(() => Navigation.NavigateTo("/shop"))">
+                    @NumberFormatter.Money(stats.Money)
+                </MudChip>
+            </MudTooltip>
+            <MudTooltip Text="@($"{stats.Shards:N0} shards")">
+                <MudChip T="string" Class="wallet-chip mr-2" Color="Color.Info" Variant="Variant.Text" Icon="@Icons.Material.Rounded.Diamond" OnClick="@(() => Navigation.NavigateTo("/afk"))">
+                    @NumberFormatter.Compact(stats.Shards)
+                </MudChip>
+            </MudTooltip>
+        }
+
+        @if (Session.Me?.IsAdmin == true)
+        {
+            <MudTooltip Text="Configure Talkie">
+                <MudIconButton Icon="@Icons.Material.Rounded.Edit" Color="Color.Primary" Class="admin-pencil mr-2" Size="Size.Medium" OnClick="OpenAdminAsync" aria-label="Configure app" />
+            </MudTooltip>
+        }
+
+        @if (Session.Me is { } me)
+        {
+            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true" ListClass="pa-2" PopoverClass="user-menu">
+                <ActivatorContent>
+                    <div style="cursor:pointer" title="@me.DisplayName" role="button" aria-label="Account menu" @onclick="e => context.ToggleAsync(e)">
+                        <UserAvatar Url="@me.AvatarUrl" Name="@me.DisplayName" Effect="@me.ActiveEffect" Px="38" />
+                    </div>
+                </ActivatorContent>
+                <ChildContent>
+                    <div class="d-flex align-center gap-3 px-3 py-2" style="min-width:250px">
+                        <UserAvatar Url="@me.AvatarUrl" Name="@me.DisplayName" Effect="@me.ActiveEffect" Px="44" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:800">@me.DisplayName</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@me.Email</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@me.CompanyName@(me.IsOwner ? " · Owner" : "")</MudText>
+                        </div>
+                    </div>
+                    <MudDivider Class="my-2" />
+                    <MudMenuItem Icon="@Icons.Material.Rounded.AccountCircle" Href="/account">Account</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Rounded.Logout" OnClick="LogoutAsync">Logout</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        }
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="0" Variant="DrawerVariant.Responsive">
+        <NavMenu />
+    </MudDrawer>
+
+    <MudMainContent>
+        @if (!string.IsNullOrWhiteSpace(Session.Settings.Announcement) && !_announcementDismissed)
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Text" Dense="true" ShowCloseIcon="true" CloseIconClicked="() => _announcementDismissed = true" Square="true">
+                @Session.Settings.Announcement
+            </MudAlert>
+        }
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _announcementDismissed;
+    private Timer? _heartbeat;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Session.Changed += OnSessionChanged;
+        await Hub.EnsureStartedAsync();
+        // Playtime: ping the server every minute while the app is open; also refreshes the wallet chips.
+        _heartbeat = new Timer(async _ =>
+        {
+            if (!Session.IsLoggedIn) return;
+            try
+            {
+                await Api.PostAsync("/api/account/heartbeat");
+                await Session.RefreshStatsAsync();
+            }
+            catch (ApiException) { }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromMinutes(1));
+    }
+
+    private void OnSessionChanged()
+    {
+        if (!Session.IsLoggedIn)
+        {
+            _ = Hub.StopAsync();
+            Navigation.NavigateTo("/login", replace: true);
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenAdminAsync()
+    {
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true };
+        var dialog = await Dialogs.ShowAsync<AdminSettingsDialog>("Configure Talkie", options);
+        await dialog.Result;
+        await Session.RefreshSettingsAsync();
+    }
+
+    private async Task LogoutAsync() => await Session.LogoutAsync();
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        _heartbeat?.Dispose();
+    }
+}

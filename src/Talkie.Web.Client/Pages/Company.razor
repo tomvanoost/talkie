@@ -1,0 +1,209 @@
+@page "/company"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Company</PageTitle>
+
+<div class="page">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.Business" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">@(_company?.Name ?? "Company")</MudText>
+            <MudText Color="Color.Secondary">@(_company?.MemberCount ?? 0) members · @(_company?.Roles.Count ?? 0) roles</MudText>
+        </div>
+        <MudSpacer />
+        @if (CanManage)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PersonAdd" OnClick="AddMemberAsync">Add member</MudButton>
+        }
+    </div>
+
+    <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pt-4" Color="Color.Transparent">
+        <MudTabPanel Text="Members" Icon="@Icons.Material.Rounded.People">
+            <MudTable Items="_members" Hover="true" Class="soft-card" Elevation="0" Loading="_loading" Filter="Filter">
+                <ToolBarContent>
+                    <MudText Typo="Typo.h6" Style="font-weight:800">Members</MudText>
+                    <MudSpacer />
+                    <MudTextField @bind-Value="_search" Placeholder="Search members" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Rounded.Search" Immediate="true" Variant="Variant.Outlined" Margin="Margin.Dense" Style="max-width:300px" />
+                </ToolBarContent>
+                <HeaderContent>
+                    <MudTh>Member</MudTh>
+                    <MudTh>E-mail</MudTh>
+                    <MudTh>Roles</MudTh>
+                    <MudTh>Joined</MudTh>
+                    @if (CanManage) { <MudTh Style="text-align:right">Actions</MudTh> }
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>
+                        <div class="d-flex align-center gap-3">
+                            <UserAvatar Url="@context.AvatarUrl" Name="@context.DisplayName" Effect="@context.ActiveEffect" Px="38" />
+                            <div>
+                                <div style="font-weight:800">@context.DisplayName
+                                    @if (context.IsOwner) { <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text" Icon="@Icons.Material.Rounded.Star">Owner</MudChip> }
+                                </div>
+                                <div style="font-size:12.5px;color:#8093AF">@@@context.Username@(context.FirstName is null ? "" : $" · {context.FirstName} {context.LastName}")</div>
+                            </div>
+                        </div>
+                    </MudTd>
+                    <MudTd>@context.Email</MudTd>
+                    <MudTd>
+                        @foreach (var role in context.Roles)
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="role-chip" Style="@($"background:{role.Color};color:#24334A")">@role.Name</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd>@context.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</MudTd>
+                    @if (CanManage)
+                    {
+                        <MudTd Style="text-align:right">
+                            <MudTooltip Text="Edit member"><MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" OnClick="() => EditMemberAsync(context)" aria-label="Edit" /></MudTooltip>
+                            @if (!context.IsOwner && context.Id != Session.Me?.Id && context.Email != TalkieConstants.AdminEmail)
+                            {
+                                <MudTooltip Text="Delete member"><MudIconButton Icon="@Icons.Material.Rounded.PersonRemove" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteMemberAsync(context)" aria-label="Delete" /></MudTooltip>
+                            }
+                        </MudTd>
+                    }
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+
+        <MudTabPanel Text="Roles" Icon="@Icons.Material.Rounded.Label">
+            <MudPaper Class="soft-card pa-4" Elevation="0">
+                <div class="d-flex align-center mb-3">
+                    <MudText Typo="Typo.h6" Style="font-weight:800">Roles</MudText>
+                    <MudSpacer />
+                    @if (CanManage)
+                    {
+                        <MudButton StartIcon="@Icons.Material.Rounded.Add" Variant="Variant.Outlined" Color="Color.Primary" OnClick="CreateRoleAsync">New role</MudButton>
+                    }
+                </div>
+                @if (_company?.Roles.Count == 0)
+                {
+                    <MudText Color="Color.Secondary">No roles yet.</MudText>
+                }
+                <MudList T="RoleDto" Dense="false">
+                    @foreach (var role in _company?.Roles ?? [])
+                    {
+                        <MudListItem T="RoleDto">
+                            <div class="d-flex align-center gap-3">
+                                <span class="color-swatch" style="background:@role.Color;cursor:default"></span>
+                                <b>@role.Name</b>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@_members.Count(m => m.Roles.Any(r => r.Id == role.Id)) members</MudText>
+                                <MudSpacer />
+                                @if (CanManage)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Rounded.Edit" Size="Size.Small" OnClick="() => EditRoleAsync(role)" aria-label="Edit role" />
+                                    <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteRoleAsync(role)" aria-label="Delete role" />
+                                }
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudTabPanel>
+    </MudTabs>
+</div>
+
+@code {
+    private CompanyDto? _company;
+    private List<MemberDto> _members = [];
+    private string _search = "";
+    private bool _loading = true;
+
+    private bool CanManage => Session.Me is { } me && (me.IsOwner || me.IsAdmin);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _company = await Api.GetAsync<CompanyDto>("/api/company");
+            _members = await Api.GetAsync<List<MemberDto>>("/api/company/members");
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        _loading = false;
+    }
+
+    private bool Filter(MemberDto m) =>
+        string.IsNullOrWhiteSpace(_search) ||
+        m.DisplayName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        m.Email.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        m.Roles.Any(r => r.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private async Task AddMemberAsync()
+    {
+        var parameters = new DialogParameters<MemberDialog> { { d => d.Roles, _company?.Roles.ToList() ?? [] } };
+        var dialog = await Dialogs.ShowAsync<MemberDialog>("Add member", parameters);
+        if (await dialog.Result is { Canceled: false, Data: AddMemberResponse result })
+        {
+            await LoadAsync();
+            await Dialogs.ShowMessageBoxAsync("Member added",
+                (MarkupString)$"<p><b>{System.Net.WebUtility.HtmlEncode(result.Member.DisplayName)}</b> can now log in with:</p><p>E-mail: <b>{result.Member.Email}</b><br/>Temporary password: <b style=\"font-family:monospace;font-size:16px\">{result.TemporaryPassword}</b></p><p>The password was also e-mailed to them.</p>",
+                yesText: "Done");
+        }
+    }
+
+    private async Task EditMemberAsync(MemberDto member)
+    {
+        var parameters = new DialogParameters<MemberDialog> { { d => d.Member, member }, { d => d.Roles, _company?.Roles.ToList() ?? [] } };
+        var dialog = await Dialogs.ShowAsync<MemberDialog>("Edit member", parameters);
+        if (await dialog.Result is { Canceled: false })
+        {
+            await LoadAsync();
+            Snackbar.Add("Member updated.", Severity.Success);
+        }
+    }
+
+    private async Task DeleteMemberAsync(MemberDto member)
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Delete member",
+            $"Delete {member.DisplayName}? Their account ({member.Email}) and messages will be removed permanently.", yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/company/members/{member.Id}");
+            await LoadAsync();
+            Snackbar.Add($"{member.DisplayName} was deleted.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        if (await RoleDialog.ShowAsync(Dialogs) is not { } input) return;
+        try
+        {
+            await Api.PostAsync<RoleDto>("/api/company/roles", input);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task EditRoleAsync(RoleDto role)
+    {
+        if (await RoleDialog.ShowAsync(Dialogs, new RoleInput(role.Name, role.Color)) is not { } input) return;
+        try
+        {
+            await Api.PutAsync<RoleDto>($"/api/company/roles/{role.Id}", input);
+            await LoadAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DeleteRoleAsync(RoleDto role)
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Delete role", $"Delete the role {role.Name}? Members keep their account.", yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/company/roles/{role.Id}");
+            await LoadAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

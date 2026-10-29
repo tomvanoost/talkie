@@ -1,0 +1,171 @@
+@* Create or edit a text channel: name, description, which roles can see it and per-role permissions. *@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.Tag" Class="mr-2" Style="vertical-align:middle" />@(Channel is null ? "Create text channel" : $"Edit #{Channel.Name}")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Channel name" Variant="Variant.Outlined" MaxLength="100" Adornment="Adornment.Start" AdornmentText="#" Immediate="true" AutoFocus="true" />
+        <MudTextField @bind-Value="_description" Label="Description" Variant="Variant.Outlined" MaxLength="500" Lines="2" Class="mt-3" />
+
+        <div class="d-flex align-center justify-space-between mt-5">
+            <MudText Typo="Typo.subtitle1" Style="font-weight:800">Roles</MudText>
+            <MudButton StartIcon="@Icons.Material.Rounded.Add" Size="Size.Small" Variant="Variant.Text" Color="Color.Primary" OnClick="CreateRoleAsync">New role</MudButton>
+        </div>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">Select the roles that can see this channel. Leave empty so everyone can see it.</MudText>
+        <div class="d-flex flex-wrap gap-1 mt-2">
+            @if (_roles.Count == 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Your company has no roles yet — create one with "New role".</MudText>
+            }
+            @foreach (var role in _roles)
+            {
+                var selected = _visible.Contains(role.Id);
+                <MudChip T="string" Class="role-chip" Icon="@(selected ? Icons.Material.Rounded.Check : null)"
+                         Style="@($"background:{(selected ? role.Color : "#fff")};border:2px solid {role.Color};color:#24334A")"
+                         OnClick="() => ToggleVisible(role.Id)">@role.Name</MudChip>
+            }
+        </div>
+
+        <MudText Typo="Typo.subtitle1" Style="font-weight:800" Class="mt-5">Permissions</MudText>
+        <MudText Typo="Typo.caption" Color="Color.Secondary">By default everyone can send messages and react with emoji. The company owner can always do everything.</MudText>
+        <MudSimpleTable Dense="true" Hover="true" Class="mt-2" Elevation="0">
+            <thead>
+                <tr><th>Role</th><th style="text-align:center">Send messages</th><th style="text-align:center">Delete messages</th><th style="text-align:center">React with emoji</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _permissions)
+                {
+                    <tr>
+                        <td>
+                            <MudChip T="string" Size="Size.Small" Class="role-chip" Style="@($"background:{row.Color};color:#24334A")">@row.Name</MudChip>
+                        </td>
+                        <td style="text-align:center"><MudCheckBox @bind-Value="row.Send" Color="Color.Primary" Dense="true" /></td>
+                        <td style="text-align:center"><MudCheckBox @bind-Value="row.Delete" Color="Color.Primary" Dense="true" /></td>
+                        <td style="text-align:center"><MudCheckBox @bind-Value="row.React" Color="Color.Primary" Dense="true" /></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </DialogContent>
+    <DialogActions>
+        @if (Channel is not null)
+        {
+            <MudButton Color="Color.Error" StartIcon="@Icons.Material.Rounded.Delete" OnClick="DeleteAsync" Class="mr-auto">Delete channel</MudButton>
+        }
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="string.IsNullOrWhiteSpace(_name) || _busy" OnClick="SaveAsync">@(Channel is null ? "Create channel" : "Save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public Guid ServerId { get; set; }
+    [Parameter] public ChannelDto? Channel { get; set; }
+
+    private sealed class PermissionRow
+    {
+        public Guid? RoleId { get; init; }
+        public required string Name { get; set; }
+        public required string Color { get; set; }
+        public bool Send { get; set; }
+        public bool Delete { get; set; }
+        public bool React { get; set; }
+    }
+
+    private string _name = "";
+    private string? _description;
+    private List<RoleDto> _roles = [];
+    private readonly HashSet<Guid> _visible = [];
+    private readonly List<PermissionRow> _permissions = [];
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _name = Channel?.Name ?? "";
+        _description = Channel?.Description;
+        foreach (var role in Channel?.VisibleToRoles ?? []) _visible.Add(role.Id);
+
+        var everyone = Channel?.Permissions.FirstOrDefault(p => p.RoleId is null);
+        _permissions.Add(new PermissionRow
+        {
+            RoleId = null, Name = "@everyone", Color = "#E3ECF7",
+            Send = everyone?.CanSendMessages ?? true, Delete = everyone?.CanDeleteMessages ?? false, React = everyone?.CanReact ?? true,
+        });
+
+        try
+        {
+            _roles = (await Api.GetAsync<CompanyDto>("/api/company")).Roles;
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+
+        foreach (var role in _roles) AddRoleRow(role);
+    }
+
+    private void AddRoleRow(RoleDto role)
+    {
+        var existing = Channel?.Permissions.FirstOrDefault(p => p.RoleId == role.Id);
+        _permissions.Add(new PermissionRow
+        {
+            RoleId = role.Id, Name = role.Name, Color = role.Color,
+            Send = existing?.CanSendMessages ?? false, Delete = existing?.CanDeleteMessages ?? false, React = existing?.CanReact ?? false,
+        });
+    }
+
+    private void ToggleVisible(Guid id)
+    {
+        if (!_visible.Remove(id)) _visible.Add(id);
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        if (await RoleDialog.ShowAsync(Dialogs) is not { } input) return;
+        try
+        {
+            var role = await Api.PostAsync<RoleDto>("/api/company/roles", input);
+            _roles.Add(role);
+            AddRoleRow(role);
+            Snackbar.Add($"Role {role.Name} created.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task SaveAsync()
+    {
+        var request = new SaveChannelRequest(
+            _name, _description, _visible.ToList(),
+            _permissions.Where(p => p.RoleId is null || p.Send || p.Delete || p.React)
+                .Select(p => new ChannelPermissionInput(p.RoleId, p.Send, p.Delete, p.React)).ToList());
+        _busy = true;
+        try
+        {
+            if (Channel is null)
+            {
+                var id = await Api.PostAsync<Guid>($"/api/servers/{ServerId}/channels", request);
+                MudDialog.Close(DialogResult.Ok(id));
+            }
+            else
+            {
+                await Api.PutAsync($"/api/channels/{Channel.Id}", request);
+                MudDialog.Close(DialogResult.Ok(Channel.Id));
+            }
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Delete channel", $"Delete #{Channel!.Name} and all its messages?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/channels/{Channel.Id}");
+            MudDialog.Close(DialogResult.Ok(Guid.Empty));
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

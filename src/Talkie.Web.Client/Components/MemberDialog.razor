@@ -1,0 +1,117 @@
+@* Add a new member (name, surname, e-mail, roles) or edit an existing one. *@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@(Member is null ? Icons.Material.Rounded.PersonAdd : Icons.Material.Rounded.ManageAccounts)" Class="mr-2" Style="vertical-align:middle" />@(Member is null ? "Add member" : $"Edit {Member.DisplayName}")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <div class="d-flex gap-3">
+                <MudTextField @bind-Value="_firstName" Label="Name" Variant="Variant.Outlined" AutoFocus="true" Immediate="true" />
+                <MudTextField @bind-Value="_lastName" Label="Surname" Variant="Variant.Outlined" Immediate="true" />
+            </div>
+            @if (Member is null)
+            {
+                <MudTextField @bind-Value="_email" Label="E-mail" Variant="Variant.Outlined" InputType="InputType.Email" Immediate="true"
+                              HelperText="A temporary password is generated and e-mailed to this address." />
+            }
+            else
+            {
+                <MudTextField Value="@Member.Email" Label="E-mail" Variant="Variant.Outlined" ReadOnly="true" Disabled="true" />
+                <div class="d-flex gap-3">
+                    <MudTextField @bind-Value="_displayName" Label="Display name" Variant="Variant.Outlined" Immediate="true" />
+                    <MudTextField @bind-Value="_username" Label="Username" Variant="Variant.Outlined" Immediate="true" />
+                </div>
+            }
+            <div>
+                <div class="d-flex align-center justify-space-between">
+                    <MudText Typo="Typo.subtitle2">Roles</MudText>
+                    <MudButton StartIcon="@Icons.Material.Rounded.Add" Size="Size.Small" Color="Color.Primary" OnClick="CreateRoleAsync">New role</MudButton>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mt-1">
+                    @if (Roles.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No roles yet.</MudText>
+                    }
+                    @foreach (var role in Roles)
+                    {
+                        var selected = _roleIds.Contains(role.Id);
+                        <MudChip T="string" Class="role-chip" Icon="@(selected ? Icons.Material.Rounded.Check : null)"
+                                 Style="@($"background:{(selected ? role.Color : "#fff")};border:2px solid {role.Color};color:#24334A")"
+                                 OnClick="() => Toggle(role.Id)">@role.Name</MudChip>
+                    }
+                </div>
+            </div>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="_busy" OnClick="SaveAsync">@(Member is null ? "Add member" : "Save")</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public MemberDto? Member { get; set; }
+    [Parameter] public List<RoleDto> Roles { get; set; } = [];
+
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _email = "";
+    private string _displayName = "";
+    private string _username = "";
+    private readonly HashSet<Guid> _roleIds = [];
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (Member is null) return;
+        _firstName = Member.FirstName ?? "";
+        _lastName = Member.LastName ?? "";
+        _displayName = Member.DisplayName;
+        _username = Member.Username;
+        foreach (var r in Member.Roles) _roleIds.Add(r.Id);
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (!_roleIds.Remove(id)) _roleIds.Add(id);
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        if (await RoleDialog.ShowAsync(Dialogs) is not { } input) return;
+        try
+        {
+            var role = await Api.PostAsync<RoleDto>("/api/company/roles", input);
+            Roles.Add(role);
+            _roleIds.Add(role.Id);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        try
+        {
+            if (Member is null)
+            {
+                var result = await Api.PostAsync<AddMemberResponse>("/api/company/members",
+                    new AddMemberRequest(_firstName, _lastName, _email, _roleIds.ToList()));
+                MudDialog.Close(DialogResult.Ok(result));
+            }
+            else
+            {
+                var updated = await Api.PutAsync<MemberDto>($"/api/company/members/{Member.Id}",
+                    new UpdateMemberRequest(_firstName, _lastName, _displayName, _username, _roleIds.ToList()));
+                MudDialog.Close(DialogResult.Ok(updated));
+            }
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}

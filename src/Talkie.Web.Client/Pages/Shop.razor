@@ -1,0 +1,240 @@
+@page "/shop"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Shop</PageTitle>
+
+<div class="page">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.Storefront" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">Shop</MudText>
+            <MudText Color="Color.Secondary">Spend your money and shards on boxes, effects and boosters.</MudText>
+        </div>
+        <MudSpacer />
+        @if (_shop is { } shop)
+        {
+            <MudChip T="string" Size="Size.Large" Color="Color.Success" Icon="@Icons.Material.Rounded.Payments" Class="wallet-chip">@NumberFormatter.Money(shop.Wallet.Money)</MudChip>
+            <MudChip T="string" Size="Size.Large" Color="Color.Info" Icon="@Icons.Material.Rounded.Diamond" Class="wallet-chip">@NumberFormatter.Compact(shop.Wallet.Shards)</MudChip>
+        }
+    </div>
+
+    @if (_shop is not { } s)
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+    else
+    {
+        <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-5" Color="Color.Transparent" @bind-ActivePanelIndex="_tab">
+            <MudTabPanel Text="Boxes" Icon="@Icons.Material.Rounded.Inventory2">
+                <MudGrid Spacing="3">
+                    @foreach (var box in Catalog.Boxes)
+                    {
+                        var price = Price(box.Key);
+                        <MudItem xs="12" sm="6" md="4">
+                            <MudPaper Class="box-card" Elevation="0">
+                                <BoxArt Key="@box.Key" Color="@box.Color" />
+                                <MudText Typo="Typo.h6" Style="font-weight:800">@box.Name</MudText>
+                                <div class="reward-chips">
+                                    @foreach (var reward in box.Rewards)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@(box.RewardCurrency == Currency.Money ? Color.Success : Color.Info)">
+                                            @(box.RewardCurrency == Currency.Money ? NumberFormatter.Money(reward.Amount) : NumberFormatter.Compact(reward.Amount) + " ◆")
+                                        </MudChip>
+                                    }
+                                </div>
+                                <MudSpacer />
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Rounded.ShoppingCart"
+                                           Disabled="_busy || s.Wallet.Money < price" OnClick="() => BuyBoxAsync(box)">Buy for @NumberFormatter.Money(price)</MudButton>
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+
+                <MudPaper Class="soft-card pa-4 mt-6" Elevation="0">
+                    <MudText Typo="Typo.h6" Style="font-weight:800">Your unopened boxes</MudText>
+                    @if (s.Wallet.UnopenedBoxes.Count == 0)
+                    {
+                        <MudText Color="Color.Secondary">You don't have any unopened boxes.</MudText>
+                    }
+                    <div class="d-flex flex-wrap gap-4 mt-3">
+                        @foreach (var unopened in s.Wallet.UnopenedBoxes)
+                        {
+                            var def = Catalog.FindBox(unopened.BoxKey)!;
+                            <div style="text-align:center">
+                                <div class="box-tap" @onclick="() => OpenBoxAsync(unopened)"><BoxArt Key="@def.Key" Color="@def.Color" Size="80" /></div>
+                                <div><MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => OpenBoxAsync(unopened)">Open</MudButton></div>
+                            </div>
+                        }
+                    </div>
+                </MudPaper>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Exchange" Icon="@Icons.Material.Rounded.CurrencyExchange">
+                <MudGrid Spacing="3">
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="soft-card pa-5" Elevation="0">
+                            <MudText Typo="Typo.h6" Style="font-weight:800"><MudIcon Icon="@Icons.Material.Rounded.Diamond" Color="Color.Info" Style="vertical-align:middle" /> Buy shards with money</MudText>
+                            <MudText Color="Color.Secondary" Class="mb-3">1 shard costs @NumberFormatter.Money(s.Rates.MoneyPerShardBuy)</MudText>
+                            <MudNumericField @bind-Value="_buyAmount" Label="Shards to buy" Variant="Variant.Outlined" Min="1" Max="1000000000" Immediate="true" />
+                            <MudText Class="my-2">Cost: <b>@NumberFormatter.Money(_buyAmount * s.Rates.MoneyPerShardBuy)</b></MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_busy || _buyAmount <= 0 || _buyAmount * s.Rates.MoneyPerShardBuy > s.Wallet.Money" OnClick="BuyShardsAsync">Buy @NumberFormatter.Compact(_buyAmount) shards</MudButton>
+                        </MudPaper>
+                    </MudItem>
+                    <MudItem xs="12" md="6">
+                        <MudPaper Class="soft-card pa-5" Elevation="0">
+                            <MudText Typo="Typo.h6" Style="font-weight:800"><MudIcon Icon="@Icons.Material.Rounded.Payments" Color="Color.Success" Style="vertical-align:middle" /> Buy money with shards</MudText>
+                            <MudText Color="Color.Secondary" Class="mb-3">1 shard is worth @NumberFormatter.Money(s.Rates.MoneyPerShardSell)</MudText>
+                            <MudNumericField @bind-Value="_sellAmount" Label="Shards to sell" Variant="Variant.Outlined" Min="1" Max="1000000000" Immediate="true" />
+                            <MudText Class="my-2">You get: <b>@NumberFormatter.Money(_sellAmount * s.Rates.MoneyPerShardSell)</b></MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true" Disabled="_busy || _sellAmount <= 0 || _sellAmount > s.Wallet.Shards" OnClick="SellShardsAsync">Sell @NumberFormatter.Compact(_sellAmount) shards</MudButton>
+                        </MudPaper>
+                    </MudItem>
+                </MudGrid>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Avatar effects" Icon="@Icons.Material.Rounded.AutoAwesome">
+                <MudGrid Spacing="3">
+                    @foreach (var effect in Catalog.Effects)
+                    {
+                        var owned = s.Wallet.OwnedEffects.Contains(effect.Key);
+                        var active = s.Wallet.ActiveEffect == effect.Key;
+                        <MudItem xs="12" sm="6" md="4" lg="3">
+                            <MudPaper Class="effect-card" Elevation="0" Style="@(active ? "border:2px solid #5B9BEA" : "")">
+                                <div class="effect-preview">
+                                    <UserAvatar Url="@Session.Me?.AvatarUrl" Name="@Session.Me?.DisplayName" Effect="@effect.Key" Px="64" />
+                                </div>
+                                <MudText Typo="Typo.h6" Style="font-weight:800">@effect.Name</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@effect.Description</MudText>
+                                <MudSpacer />
+                                @if (!owned)
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_busy || s.Wallet.Money < effect.Price" OnClick="() => BuyEffectAsync(effect)">Buy for @NumberFormatter.Money(effect.Price)</MudButton>
+                                }
+                                else if (active)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Rounded.Check" OnClick="() => EquipAsync(null)">Equipped · remove</MudButton>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" OnClick="() => EquipAsync(effect.Key)">Equip</MudButton>
+                                }
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudTabPanel>
+
+            <MudTabPanel Text="Boosters" Icon="@Icons.Material.Rounded.RocketLaunch">
+                <MudAlert Severity="Severity.Info" Class="mb-4">Shard boosters multiply the shards you earn while AFK. They are permanent; your best booster counts. Current multiplier: <b>x@(s.Wallet.ShardMultiplier)</b></MudAlert>
+                <MudGrid Spacing="3">
+                    @foreach (var booster in Catalog.Boosters)
+                    {
+                        var owned = s.Wallet.OwnedBoosters.Contains(booster.Key);
+                        <MudItem xs="12" sm="6">
+                            <MudPaper Class="effect-card" Elevation="0">
+                                <div class="stat-icon" style="background:#E3F0FD;color:#5B9BEA;width:84px;height:84px;font-size:34px;font-weight:800">x@(booster.Multiplier)</div>
+                                <MudText Typo="Typo.h6" Style="font-weight:800">@booster.Name</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">Earn @booster.Multiplier shards per minute while AFK instead of 1.</MudText>
+                                @if (owned)
+                                {
+                                    <MudChip T="string" Color="Color.Success" Icon="@Icons.Material.Rounded.Check">Owned</MudChip>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Disabled="_busy || s.Wallet.Money < booster.Price" OnClick="() => BuyBoosterAsync(booster)">Buy for @NumberFormatter.Money(booster.Price)</MudButton>
+                                }
+                            </MudPaper>
+                        </MudItem>
+                    }
+                </MudGrid>
+            </MudTabPanel>
+        </MudTabs>
+    }
+</div>
+
+@code {
+    private ShopDto? _shop;
+    private bool _busy;
+    private int _tab;
+    private long _buyAmount = 10;
+    private long _sellAmount = 10;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _shop = await Api.GetAsync<ShopDto>("/api/shop"); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private long Price(string key) => key switch
+    {
+        "common" => _shop!.CommonPrice,
+        "rare" => _shop!.RarePrice,
+        _ => _shop!.ShardPrice,
+    };
+
+    private void Apply(WalletDto wallet)
+    {
+        _shop = _shop! with { Wallet = wallet };
+        Session.ApplyWallet(wallet);
+    }
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try { await action(); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+
+    private Task BuyShardsAsync() => RunAsync(async () =>
+    {
+        Apply(await Api.PostAsync<WalletDto>("/api/shop/shards/buy", new ExchangeRequest(_buyAmount)));
+        Snackbar.Add($"You bought {NumberFormatter.Compact(_buyAmount)} shards.", Severity.Success);
+    });
+
+    private Task SellShardsAsync() => RunAsync(async () =>
+    {
+        Apply(await Api.PostAsync<WalletDto>("/api/shop/shards/sell", new ExchangeRequest(_sellAmount)));
+        Snackbar.Add($"You sold {NumberFormatter.Compact(_sellAmount)} shards.", Severity.Success);
+    });
+
+    private Task BuyBoxAsync(BoxDefinition box) => RunAsync(async () =>
+    {
+        var unopened = await Api.PostAsync<UnopenedBoxDto>($"/api/shop/boxes/{box.Key}/buy");
+        _shop = await Api.GetAsync<ShopDto>("/api/shop");
+        Session.ApplyWallet(_shop.Wallet);
+        await OpenBoxAsync(unopened);
+    });
+
+    private async Task OpenBoxAsync(UnopenedBoxDto unopened)
+    {
+        var parameters = new DialogParameters<BoxOpenDialog> { { d => d.Unopened, unopened } };
+        var options = new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, BackdropClick = false, CloseButton = true };
+        var dialog = await Dialogs.ShowAsync<BoxOpenDialog>("", parameters, options);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: BoxOpenResultDto opened })
+        {
+            Apply(opened.Wallet);
+            await Session.RefreshStatsAsync();
+        }
+    }
+
+    private Task BuyEffectAsync(EffectDefinition effect) => RunAsync(async () =>
+    {
+        Apply(await Api.PostAsync<WalletDto>($"/api/shop/effects/{effect.Key}/buy"));
+        Snackbar.Add($"{effect.Name} is now on your avatar!", Severity.Success);
+    });
+
+    private Task EquipAsync(string? key) => RunAsync(async () =>
+        Apply(await Api.PutAsync<WalletDto>("/api/shop/effects/active", new { Key = key })));
+
+    private Task BuyBoosterAsync(BoosterDefinition booster) => RunAsync(async () =>
+    {
+        Apply(await Api.PostAsync<WalletDto>($"/api/shop/boosters/{booster.Key}/buy"));
+        Snackbar.Add($"{booster.Name} activated!", Severity.Success);
+    });
+}

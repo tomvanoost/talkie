@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Talkie.AppHost/Talkie.AppHost.csproj" />
+    <Project Path="src/Talkie.ServiceDefaults/Talkie.ServiceDefaults.csproj" />
+    <Project Path="src/Talkie.Shared/Talkie.Shared.csproj" />
+    <Project Path="src/Talkie.Data/Talkie.Data.csproj" />
+    <Project Path="src/Talkie.MigrationService/Talkie.MigrationService.csproj" />
+    <Project Path="src/Talkie.Api/Talkie.Api.csproj" />
+    <Project Path="src/Talkie.Web/Talkie.Web.csproj" />
+    <Project Path="src/Talkie.Web.Client/Talkie.Web.Client.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Talkie.Tests/Talkie.Tests.csproj" />
+  </Folder>
+</Solution>
