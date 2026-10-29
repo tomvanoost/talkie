@@ -1,0 +1,58 @@
+@* Create or edit a role: a name and a color. *@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@(Existing is null ? "New role" : "Edit role")</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Role name" Variant="Variant.Outlined" MaxLength="50" AutoFocus="true" Immediate="true" />
+        <MudText Typo="Typo.subtitle2" Class="mt-4 mb-2">Color</MudText>
+        <div class="d-flex flex-wrap gap-2">
+            @foreach (var color in TalkieTheme.RoleColors)
+            {
+                <span class="color-swatch @(string.Equals(color, _color, StringComparison.OrdinalIgnoreCase) ? "selected" : "")" style="background:@color" title="@color" @onclick="() => _color = color"></span>
+            }
+        </div>
+        <MudColorPicker Class="mt-4" Label="Custom color" Value="@(new MudBlazor.Utilities.MudColor(_color))" ValueChanged="c => _color = c.Value[..7]"
+                        ShowAlpha="false" Variant="Variant.Outlined" />
+        <div class="mt-4">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Preview</MudText><br />
+            <MudChip T="string" Class="role-chip" Style="@($"background:{_color};color:#24334A")">@(string.IsNullOrWhiteSpace(_name) ? "Role" : _name)</MudChip>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="string.IsNullOrWhiteSpace(_name)" OnClick="Save">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public RoleInput? Existing { get; set; }
+
+    private string _name = "";
+    private string _color = TalkieTheme.RoleColors[0];
+
+    protected override void OnInitialized()
+    {
+        if (Existing is not null)
+        {
+            _name = Existing.Name;
+            _color = Existing.Color;
+        }
+        else
+        {
+            _color = TalkieTheme.RoleColors[Random.Shared.Next(TalkieTheme.RoleColors.Length)];
+        }
+    }
+
+    private void Save() => MudDialog.Close(DialogResult.Ok(new RoleInput(_name.Trim(), _color.ToUpperInvariant())));
+
+    public static async Task<RoleInput?> ShowAsync(IDialogService dialogs, RoleInput? existing = null)
+    {
+        var parameters = new DialogParameters<RoleDialog> { { d => d.Existing, existing } };
+        var dialog = await dialogs.ShowAsync<RoleDialog>(existing is null ? "New role" : "Edit role", parameters,
+            new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true });
+        var result = await dialog.Result;
+        return result is { Canceled: false, Data: RoleInput role } ? role : null;
+    }
+}

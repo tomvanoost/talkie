@@ -1,0 +1,138 @@
+@page "/account"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Account</PageTitle>
+
+<div class="page" style="max-width:980px">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.AccountCircle" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">Account</MudText>
+            <MudText Color="Color.Secondary">Your profile picture, name and password.</MudText>
+        </div>
+    </div>
+
+    @if (Session.Me is { } me)
+    {
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="4">
+                <MudPaper Class="soft-card pa-6" Elevation="0" Style="text-align:center">
+                    <div class="d-flex justify-center my-4">
+                        <UserAvatar Url="@me.AvatarUrl" Name="@me.DisplayName" Effect="@me.ActiveEffect" Px="128" />
+                    </div>
+                    <MudText Typo="Typo.h6" Style="font-weight:800">@me.DisplayName</MudText>
+                    <MudText Color="Color.Secondary">@me.Email</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@me.CompanyName@(me.IsOwner ? " · Owner" : "")@(me.IsAdmin ? " · App admin" : "")</MudText>
+                    <div class="d-flex flex-wrap gap-1 justify-center mt-2">
+                        @foreach (var role in me.Roles)
+                        {
+                            <MudChip T="string" Size="Size.Small" Class="role-chip" Style="@($"background:{role.Color};color:#24334A")">@role.Name</MudChip>
+                        }
+                    </div>
+                    <MudFileUpload T="IBrowserFile" FilesChanged="UploadAvatarAsync" Accept="image/*" Class="mt-4">
+                        <CustomContent>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.PhotoCamera" OnClick="@context.OpenFilePickerAsync" Disabled="_uploading">Upload picture</MudButton>
+                        </CustomContent>
+                    </MudFileUpload>
+                    @if (me.AvatarUrl is not null)
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Class="mt-2" OnClick="RemoveAvatarAsync">Remove picture</MudButton>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">PNG, JPG, GIF or WebP up to 2 MB.</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="8">
+                <MudPaper Class="soft-card pa-6" Elevation="0">
+                    <MudText Typo="Typo.h6" Style="font-weight:800" Class="mb-3">Profile</MudText>
+                    <MudStack Spacing="3">
+                        <div class="d-flex gap-3">
+                            <MudTextField @bind-Value="_displayName" Label="Display name" Variant="Variant.Outlined" />
+                            <MudTextField @bind-Value="_username" Label="Username" Variant="Variant.Outlined" />
+                        </div>
+                        <div class="d-flex gap-3">
+                            <MudTextField @bind-Value="_firstName" Label="Name" Variant="Variant.Outlined" />
+                            <MudTextField @bind-Value="_lastName" Label="Surname" Variant="Variant.Outlined" />
+                        </div>
+                        <MudTextField Value="@me.Email" Label="E-mail" Variant="Variant.Outlined" Disabled="true" />
+                        <div><MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveProfileAsync">Save profile</MudButton></div>
+                    </MudStack>
+                </MudPaper>
+                <MudPaper Class="soft-card pa-6 mt-4" Elevation="0">
+                    <MudText Typo="Typo.h6" Style="font-weight:800" Class="mb-3">Security</MudText>
+                    <MudStack Spacing="3">
+                        <MudTextField @bind-Value="_currentPassword" Label="Current password" Variant="Variant.Outlined" InputType="InputType.Password" />
+                        <MudTextField @bind-Value="_newPassword" Label="New password" Variant="Variant.Outlined" InputType="InputType.Password" HelperText="At least 8 characters with a letter and a digit" />
+                        <div><MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="ChangePasswordAsync">Change password</MudButton></div>
+                    </MudStack>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    }
+</div>
+
+@code {
+    private string _displayName = "";
+    private string _username = "";
+    private string? _firstName;
+    private string? _lastName;
+    private string _currentPassword = "";
+    private string _newPassword = "";
+    private bool _uploading;
+
+    protected override void OnInitialized()
+    {
+        if (Session.Me is not { } me) return;
+        _displayName = me.DisplayName;
+        _username = me.Username;
+        _firstName = me.FirstName;
+        _lastName = me.LastName;
+    }
+
+    private async Task UploadAvatarAsync(IBrowserFile? file)
+    {
+        if (file is null) return;
+        if (file.Size > TalkieConstants.MaxAvatarBytes) { Snackbar.Add("The picture must be 2 MB or smaller.", Severity.Warning); return; }
+        _uploading = true;
+        try
+        {
+            Session.SetProfile(await Api.UploadAsync<UserProfileDto>("/api/account/avatar", file, TalkieConstants.MaxAvatarBytes));
+            Snackbar.Add("Profile picture updated.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _uploading = false; }
+    }
+
+    private async Task RemoveAvatarAsync()
+    {
+        try
+        {
+            await Api.DeleteAsync("/api/account/avatar");
+            await Session.RefreshProfileAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        try
+        {
+            Session.SetProfile(await Api.PutAsync<UserProfileDto>("/api/account/profile", new UpdateProfileRequest(_username, _displayName, _firstName, _lastName)));
+            Snackbar.Add("Profile saved.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        try
+        {
+            await Api.PutAsync("/api/account/password", new ChangePasswordRequest(_currentPassword, _newPassword));
+            _currentPassword = _newPassword = "";
+            Snackbar.Add("Password changed.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

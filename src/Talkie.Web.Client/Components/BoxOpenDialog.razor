@@ -1,0 +1,74 @@
+@* Tap the box as fast as you can to open it; the reward is rolled on the server. *@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div style="text-align:center;padding:12px 0 4px">
+            @if (_result is null)
+            {
+                <MudText Typo="Typo.h5" Style="font-weight:800">@Box.Name</MudText>
+                <MudText Color="Color.Secondary" Class="mb-4">Tap the box as fast as you can!</MudText>
+                <div class="box-tap @(_taps > 0 ? "box-shake" : "")" @onclick="TapAsync" style="@($"transform:scale({1 + _taps * 0.03:0.00})")">
+                    <BoxArt Key="@Box.Key" Color="@Box.Color" Size="170" />
+                </div>
+                <MudProgressLinear Value="@(_taps * 100.0 / Catalog.TapsToOpen)" Color="Color.Primary" Rounded="true" Size="Size.Large" Class="mt-4" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@_taps / @Catalog.TapsToOpen taps</MudText>
+            }
+            else
+            {
+                <div class="confetti">
+                    @for (var i = 0; i < 18; i++)
+                    {
+                        var x = (i - 9) * 18;
+                        <i style="@($"left:calc(50% + {x / 3}px);background:{TalkieTheme.RoleColors[i % TalkieTheme.RoleColors.Length]};--x:{x}px;animation-delay:{i % 5 * 0.05:0.00}s")"></i>
+                    }
+                </div>
+                <div class="box-pop">
+                    <MudIcon Icon="@(_result.Currency == Currency.Money ? Icons.Material.Rounded.Payments : Icons.Material.Rounded.Diamond)"
+                             Style="font-size:72px" Color="@(_result.Currency == Currency.Money ? Color.Success : Color.Primary)" />
+                    <div class="reward-amount">@(_result.Currency == Currency.Money ? NumberFormatter.Money(_result.Amount) : $"{NumberFormatter.Compact(_result.Amount)} shards")</div>
+                    <MudText Color="Color.Secondary">You opened it in @_elapsed.TotalSeconds.ToString("0.0")s!</MudText>
+                </div>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        @if (_result is not null)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" FullWidth="true" OnClick="() => MudDialog.Close(DialogResult.Ok(_result))">Awesome!</MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public UnopenedBoxDto Unopened { get; set; } = default!;
+
+    private BoxDefinition Box => Catalog.FindBox(Unopened.BoxKey)!;
+    private int _taps;
+    private DateTime _start;
+    private TimeSpan _elapsed;
+    private bool _opening;
+    private BoxOpenResultDto? _result;
+
+    private async Task TapAsync()
+    {
+        if (_opening || _result is not null) return;
+        if (_taps == 0) _start = DateTime.UtcNow;
+        _taps++;
+        if (_taps < Catalog.TapsToOpen) return;
+
+        _opening = true;
+        _elapsed = DateTime.UtcNow - _start;
+        try
+        {
+            _result = await Api.PostAsync<BoxOpenResultDto>($"/api/shop/boxes/{Unopened.Id}/open");
+        }
+        catch (ApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            MudDialog.Cancel();
+        }
+    }
+}

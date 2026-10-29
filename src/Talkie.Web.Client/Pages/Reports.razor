@@ -1,0 +1,94 @@
+@page "/reports"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Reports</PageTitle>
+
+<div class="page">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.Flag" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">Reports</MudText>
+            <MudText Color="Color.Secondary">@(IsAdmin ? "All reports from every company. You can remove reports once they are handled." : "Report users who break the rules. You can see the reports you sent.")</MudText>
+        </div>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Rounded.Flag" OnClick="ReportAsync">Report a user</MudButton>
+    </div>
+
+    <MudTable Items="_reports" Hover="true" Class="soft-card" Elevation="0" Loading="_loading">
+        <ToolBarContent>
+            <MudText Typo="Typo.h6" Style="font-weight:800">@(IsAdmin ? "All reports" : "Your reports")</MudText>
+            <MudSpacer />
+            <MudChip T="string" Color="Color.Error" Variant="Variant.Text">@_reports.Count open</MudChip>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Reported user</MudTh>
+            <MudTh>Reason</MudTh>
+            <MudTh>Reported by</MudTh>
+            <MudTh>Date</MudTh>
+            @if (IsAdmin) { <MudTh Style="text-align:right">Remove</MudTh> }
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>
+                <div class="d-flex align-center gap-2">
+                    <UserAvatar Url="@context.Reported.AvatarUrl" Name="@context.Reported.DisplayName" Px="34" />
+                    <div><b>@context.Reported.DisplayName</b><br /><small style="color:#8093AF">@context.Reported.Email · @context.Reported.CompanyName</small></div>
+                </div>
+            </MudTd>
+            <MudTd Style="max-width:420px;white-space:pre-wrap">@context.Reason</MudTd>
+            <MudTd>@context.Reporter.DisplayName<br /><small style="color:#8093AF">@context.Reporter.Email</small></MudTd>
+            <MudTd>@context.CreatedAt.ToLocalTime().ToString("d MMM yyyy HH:mm")</MudTd>
+            @if (IsAdmin)
+            {
+                <MudTd Style="text-align:right">
+                    <MudTooltip Text="Remove report"><MudIconButton Icon="@Icons.Material.Rounded.Delete" Color="Color.Error" OnClick="() => RemoveAsync(context)" aria-label="Remove report" /></MudTooltip>
+                </MudTd>
+            }
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Color="Color.Secondary" Class="pa-6">No reports. Everyone is behaving! 🎉</MudText>
+        </NoRecordsContent>
+    </MudTable>
+</div>
+
+@code {
+    private List<ReportDto> _reports = [];
+    private bool _loading = true;
+    private bool IsAdmin => Session.Me?.IsAdmin == true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try { _reports = await Api.GetAsync<List<ReportDto>>("/api/reports"); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        _loading = false;
+    }
+
+    private async Task ReportAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<ReportDialog>("Report a user");
+        if (await dialog.Result is { Canceled: false })
+        {
+            Snackbar.Add("Thanks, your report was sent.", Severity.Success);
+            await LoadAsync();
+        }
+    }
+
+    private async Task RemoveAsync(ReportDto report)
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Remove report", $"Remove the report about {report.Reported.DisplayName}?", yesText: "Remove", cancelText: "Cancel");
+        if (confirm != true) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/reports/{report.Id}");
+            _reports.Remove(report);
+            Snackbar.Add("Report removed.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

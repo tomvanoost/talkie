@@ -1,0 +1,277 @@
+@page "/"
+@page "/chat"
+@attribute [Authorize]
+@implements IDisposable
+@inject ApiClient Api
+@inject SessionState Session
+@inject ChatHubClient Hub
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Chat</PageTitle>
+
+<div class="chat-shell">
+    <aside class="chat-sidebar">
+        <div class="chat-sidebar-header">
+            <span>Direct Messages</span>
+            <MudMenu Icon="@Icons.Material.Rounded.Add" Size="Size.Small" Color="Color.Primary" AnchorOrigin="Origin.BottomLeft" Dense="true" AriaLabel="New conversation">
+                <MudMenuItem Icon="@Icons.Material.Rounded.Chat" OnClick="NewDirectAsync">New message</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Rounded.Groups" OnClick="NewGroupAsync">New group</MudMenuItem>
+            </MudMenu>
+        </div>
+        @if (_conversations.Count == 0)
+        {
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="px-5 pb-2">No conversations yet. Click + to message someone.</MudText>
+        }
+        @foreach (var c in _conversations)
+        {
+            var other = c.Members.FirstOrDefault(m => m.Id != Session.Me?.Id);
+            <div class="chat-item @(_selectedConversation?.Id == c.Id ? "selected" : "")" @onclick="() => SelectConversation(c)">
+                @if (c.IsGroup)
+                {
+                    <MudAvatar Style="background:linear-gradient(135deg,#A8DCD1,#5B9BEA);color:#fff;width:38px;height:38px"><MudIcon Icon="@Icons.Material.Rounded.Groups" /></MudAvatar>
+                }
+                else
+                {
+                    <UserAvatar Url="@other?.AvatarUrl" Name="@c.Name" Effect="@other?.ActiveEffect" Px="38" />
+                }
+                <div class="meta">
+                    <div class="title">@c.Name</div>
+                    <div class="subtitle">@(c.LastMessagePreview ?? (c.IsGroup ? $"{c.Members.Count} members" : other?.Email))</div>
+                </div>
+            </div>
+        }
+
+        <div class="chat-sidebar-header mt-4"><span>Servers</span></div>
+        @foreach (var server in _servers)
+        {
+            <div class="server-header">
+                <div class="server-icon">@server.Name[..1].ToUpperInvariant()</div>
+                <MudText Style="font-weight:800">@server.Name</MudText>
+            </div>
+            <div class="chat-sidebar-header" style="padding-top:8px">
+                <span style="font-size:11px">Text channels</span>
+                @if (server.CanManage)
+                {
+                    <MudTooltip Text="Create channel">
+                        <MudIconButton Icon="@Icons.Material.Rounded.Add" Size="Size.Small" Color="Color.Primary" OnClick="() => CreateChannelAsync(server)" aria-label="Create channel" />
+                    </MudTooltip>
+                }
+            </div>
+            @foreach (var channel in server.Channels)
+            {
+                <div class="channel-item @(_selectedChannel?.Id == channel.Id ? "selected" : "")" @onclick="() => SelectChannel(channel)">
+                    <span class="hash">#</span>
+                    <span>@channel.Name</span>
+                    @if (channel.VisibleToRoles.Count > 0)
+                    {
+                        <MudIcon Icon="@Icons.Material.Rounded.Lock" Style="font-size:14px;color:#9DB3D3" />
+                    }
+                    @if (server.CanManage)
+                    {
+                        <MudIconButton Class="edit" Icon="@Icons.Material.Rounded.Settings" Size="Size.Small" OnClick="() => EditChannelAsync(server, channel)" aria-label="Edit channel" />
+                    }
+                </div>
+            }
+        }
+    </aside>
+
+    <section class="chat-main">
+        @if (_selectedConversation is { } conv)
+        {
+            <div class="chat-header">
+                @if (conv.IsGroup)
+                {
+                    <MudAvatar Style="background:linear-gradient(135deg,#A8DCD1,#5B9BEA);color:#fff"><MudIcon Icon="@Icons.Material.Rounded.Groups" /></MudAvatar>
+                }
+                else
+                {
+                    var other = conv.Members.FirstOrDefault(m => m.Id != Session.Me?.Id);
+                    <UserAvatar Url="@other?.AvatarUrl" Name="@conv.Name" Effect="@other?.ActiveEffect" Px="40" />
+                }
+                <div>
+                    <div class="title">@conv.Name</div>
+                    <div class="desc">
+                        @if (conv.IsGroup)
+                        {
+                            @string.Join(", ", conv.Members.Select(m => m.DisplayName))
+                        }
+                        else
+                        {
+                            @conv.Members.FirstOrDefault(m => m.Id != Session.Me?.Id)?.Email
+                        }
+                    </div>
+                </div>
+                <MudSpacer />
+                @if (conv.IsGroup && conv.OwnerId == Session.Me?.Id)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined" Icon="@Icons.Material.Rounded.Star">Group owner</MudChip>
+                }
+                <MudTooltip Text="Search messages"><MudIconButton Icon="@Icons.Material.Rounded.ManageSearch" OnClick="SearchAsync" aria-label="Search messages" /></MudTooltip>
+            </div>
+            <ChatPanel ConversationId="conv.Id" CanSend="true" CanReact="true" CanDeleteOthers="@(conv.IsGroup && conv.OwnerId == Session.Me?.Id)"
+                       Placeholder="@($"Message {conv.Name}")" OnSent="LoadConversationsAsync" />
+        }
+        else if (_selectedChannel is { } channel)
+        {
+            <div class="chat-header">
+                <MudIcon Icon="@Icons.Material.Rounded.Tag" Color="Color.Primary" />
+                <div>
+                    <div class="title">@channel.Name</div>
+                    <div class="desc">@channel.Description</div>
+                </div>
+                <MudSpacer />
+                @foreach (var role in channel.VisibleToRoles)
+                {
+                    <MudChip T="string" Size="Size.Small" Class="role-chip" Style="@($"background:{role.Color};color:#24334A")">@role.Name</MudChip>
+                }
+                <MudTooltip Text="Search messages"><MudIconButton Icon="@Icons.Material.Rounded.ManageSearch" OnClick="SearchAsync" aria-label="Search messages" /></MudTooltip>
+            </div>
+            <ChatPanel ChannelId="channel.Id" CanSend="channel.CanSendMessages" CanReact="channel.CanReact" CanDeleteOthers="channel.CanDeleteMessages"
+                       Placeholder="@($"Message #{channel.Name}")" />
+        }
+        else
+        {
+            <div class="empty-chat">
+                <MudIcon Icon="@Icons.Material.Rounded.Forum" Style="font-size:64px" Color="Color.Primary" />
+                <MudText Typo="Typo.h5">Welcome to Talkie</MudText>
+                <MudText Color="Color.Secondary">Pick a conversation or a channel on the left.</MudText>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private List<ConversationDto> _conversations = [];
+    private List<ServerDto> _servers = [];
+    private ConversationDto? _selectedConversation;
+    private ChannelDto? _selectedChannel;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Hub.ConversationsChanged += OnConversationsChanged;
+        Hub.ChannelsChanged += OnChannelsChanged;
+        Hub.MessageChanged += OnMessageChanged;
+        await Task.WhenAll(LoadConversationsAsync(), LoadServersAsync());
+        _selectedChannel ??= _servers.SelectMany(s => s.Channels).FirstOrDefault();
+    }
+
+    private async Task LoadConversationsAsync()
+    {
+        try
+        {
+            _conversations = await Api.GetAsync<List<ConversationDto>>("/api/conversations");
+            if (_selectedConversation is not null)
+            {
+                _selectedConversation = _conversations.FirstOrDefault(c => c.Id == _selectedConversation.Id) ?? _selectedConversation;
+            }
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task LoadServersAsync()
+    {
+        try
+        {
+            _servers = await Api.GetAsync<List<ServerDto>>("/api/servers");
+            if (_selectedChannel is not null)
+            {
+                _selectedChannel = _servers.SelectMany(s => s.Channels).FirstOrDefault(c => c.Id == _selectedChannel.Id);
+            }
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private void SelectConversation(ConversationDto c)
+    {
+        _selectedChannel = null;
+        _selectedConversation = c;
+    }
+
+    private void SelectChannel(ChannelDto c)
+    {
+        _selectedConversation = null;
+        _selectedChannel = c;
+    }
+
+    private async Task NewDirectAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<NewDirectMessageDialog>("New message");
+        if (await dialog.Result is { Canceled: false, Data: ConversationDto c })
+        {
+            await LoadConversationsAsync();
+            SelectConversation(_conversations.FirstOrDefault(x => x.Id == c.Id) ?? c);
+        }
+    }
+
+    private async Task NewGroupAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<NewGroupDialog>("New group");
+        if (await dialog.Result is { Canceled: false, Data: ConversationDto c })
+        {
+            await LoadConversationsAsync();
+            SelectConversation(_conversations.FirstOrDefault(x => x.Id == c.Id) ?? c);
+        }
+    }
+
+    private async Task CreateChannelAsync(ServerDto server)
+    {
+        var parameters = new DialogParameters<ChannelDialog> { { d => d.ServerId, server.Id } };
+        var dialog = await Dialogs.ShowAsync<ChannelDialog>("Create channel", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: Guid id })
+        {
+            await LoadServersAsync();
+            if (_servers.SelectMany(s => s.Channels).FirstOrDefault(c => c.Id == id) is { } created) SelectChannel(created);
+            Snackbar.Add("Channel created.", Severity.Success);
+        }
+    }
+
+    private async Task EditChannelAsync(ServerDto server, ChannelDto channel)
+    {
+        var parameters = new DialogParameters<ChannelDialog> { { d => d.ServerId, server.Id }, { d => d.Channel, channel } };
+        var dialog = await Dialogs.ShowAsync<ChannelDialog>("Edit channel", parameters, new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        if (await dialog.Result is { Canceled: false })
+        {
+            await LoadServersAsync();
+            _selectedChannel ??= _servers.SelectMany(s => s.Channels).FirstOrDefault();
+        }
+    }
+
+    private async Task SearchAsync()
+    {
+        var dialog = await Dialogs.ShowAsync<SearchDialog>("Search", new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true });
+        if (await dialog.Result is { Canceled: false, Data: SearchResultDto hit })
+        {
+            if (hit.Message.ConversationId is { } cid && _conversations.FirstOrDefault(c => c.Id == cid) is { } conv) SelectConversation(conv);
+            else if (hit.Message.ChannelId is { } chid && _servers.SelectMany(s => s.Channels).FirstOrDefault(c => c.Id == chid) is { } ch) SelectChannel(ch);
+        }
+    }
+
+    private async Task OnConversationsChanged()
+    {
+        await LoadConversationsAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnChannelsChanged()
+    {
+        await LoadServersAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnMessageChanged(Guid? conversationId, Guid? channelId, Guid messageId)
+    {
+        if (conversationId is not null)
+        {
+            await LoadConversationsAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Hub.ConversationsChanged -= OnConversationsChanged;
+        Hub.ChannelsChanged -= OnChannelsChanged;
+        Hub.MessageChanged -= OnMessageChanged;
+    }
+}

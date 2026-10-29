@@ -1,0 +1,86 @@
+@page "/stats"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – Stats</PageTitle>
+
+<div class="page">
+    <div class="page-title">
+        <MudIcon Icon="@Icons.Material.Rounded.Insights" Size="Size.Large" />
+        <div>
+            <MudText Typo="Typo.h4" Style="font-weight:800">Your stats</MudText>
+            <MudText Color="Color.Secondary">Everything you've earned and done in Talkie.</MudText>
+        </div>
+    </div>
+
+    @if (_stats is { } s)
+    {
+        <MudGrid Spacing="3">
+            @Tile(Icons.Material.Rounded.Payments, "#E3F6EC", "#4CAF84", "Money", NumberFormatter.Money(s.Money), $"${s.Money:N0}")
+            @Tile(Icons.Material.Rounded.Diamond, "#E3F0FD", "#5B9BEA", "Shards", NumberFormatter.Compact(s.Shards), $"{s.Shards:N0} shards · booster x{s.ShardMultiplier}")
+            @Tile(Icons.Material.Rounded.Timer, "#FFF5DE", "#E5A93A", "Playtime", NumberFormatter.Duration(s.PlaytimeSeconds), $"{s.PlaytimeSeconds:N0} seconds")
+            @Tile(Icons.Material.Rounded.Chat, "#F1E9FB", "#9B6FD6", "Messages sent", NumberFormatter.Compact(s.MessagesSent), $"{s.MessagesSent:N0} messages")
+            @Tile(Icons.Material.Rounded.Inventory2, "#FDE9EC", "#E5788A", "Boxes opened", NumberFormatter.Compact(s.BoxesOpened), $"{s.BoxesOpened:N0} boxes")
+        </MudGrid>
+
+        @if (s.IsAfk)
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4" Icon="@Icons.Material.Rounded.Bedtime">You are AFK right now and earning shards.</MudAlert>
+        }
+
+        <MudPaper Class="soft-card pa-4 mt-6" Elevation="0">
+            <MudText Typo="Typo.h6" Style="font-weight:800" Class="mb-2"><MudIcon Icon="@Icons.Material.Rounded.EmojiEvents" Color="Color.Warning" Style="vertical-align:middle" /> Company leaderboard</MudText>
+            <MudSimpleTable Hover="true" Elevation="0" Dense="true">
+                <thead><tr><th>#</th><th>Member</th><th style="text-align:right">Money</th><th style="text-align:right">Shards</th><th style="text-align:right">Messages</th></tr></thead>
+                <tbody>
+                    @for (var i = 0; i < _leaderboard.Count; i++)
+                    {
+                        var e = _leaderboard[i];
+                        <tr style="@(e.User.Id == Session.Me?.Id ? "background:#EEF4FD" : "")">
+                            <td><b>@(i + 1)</b></td>
+                            <td><div class="d-flex align-center gap-2"><UserAvatar Url="@e.User.AvatarUrl" Name="@e.User.DisplayName" Effect="@e.User.ActiveEffect" Px="30" /> @e.User.DisplayName</div></td>
+                            <td style="text-align:right" title="@($"${e.Money:N0}")">@NumberFormatter.Money(e.Money)</td>
+                            <td style="text-align:right" title="@($"{e.Shards:N0}")">@NumberFormatter.Compact(e.Shards)</td>
+                            <td style="text-align:right">@NumberFormatter.Compact(e.MessagesSent)</td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    }
+    else
+    {
+        <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+    }
+</div>
+
+@code {
+    private StatsDto? _stats;
+    private List<LeaderboardEntryDto> _leaderboard = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _stats = await Api.GetAsync<StatsDto>("/api/stats");
+            _leaderboard = await Api.GetAsync<List<LeaderboardEntryDto>>("/api/stats/leaderboard");
+            await Session.RefreshStatsAsync();
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private static RenderFragment Tile(string icon, string bg, string fg, string label, string value, string exact) => __builder =>
+    {
+        <MudItem xs="12" sm="6" md="4">
+            <MudPaper Class="stat-card" Elevation="0">
+                <div class="stat-icon" style="background:@bg;color:@fg"><MudIcon Icon="@icon" Size="Size.Large" /></div>
+                <div>
+                    <div class="stat-label">@label</div>
+                    <MudTooltip Text="@exact"><div class="stat-value">@value</div></MudTooltip>
+                </div>
+            </MudPaper>
+        </MudItem>
+    };
+}

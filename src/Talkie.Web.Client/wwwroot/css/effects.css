@@ -1,0 +1,71 @@
+/* Avatar effects bought in the shop. Every effect wraps the avatar in .fx-wrap.fx-<key>. */
+.fx-wrap { position: relative; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.fx-wrap > .mud-avatar { position: relative; z-index: 1; }
+.fx-wrap .fx { position: absolute; pointer-events: none; z-index: 2; }
+.fx-wrap svg.fx { width: 38%; height: 38%; }
+
+/* ---- Energy lightning: small yellow bolts strike around the avatar ---- */
+.fx-lightning > .mud-avatar { animation: fx-zap-glow 1.6s infinite; }
+.fx-lightning .fx { fill: #FFE14D; filter: drop-shadow(0 0 3px #FFD000) drop-shadow(0 0 6px #FFF59D); opacity: 0; animation: fx-strike 1.6s infinite; }
+.fx-lightning .fx1 { top: -18%; left: -12%; transform: rotate(-20deg); animation-delay: 0s; }
+.fx-lightning .fx2 { top: -14%; right: -14%; transform: rotate(25deg); animation-delay: .4s; }
+.fx-lightning .fx3 { bottom: -16%; right: -10%; transform: rotate(160deg); animation-delay: .8s; }
+.fx-lightning .fx4 { bottom: -14%; left: -14%; transform: rotate(200deg); animation-delay: 1.2s; }
+@keyframes fx-strike {
+    0%, 100% { opacity: 0; scale: .6; }
+    6% { opacity: 1; scale: 1.1; }
+    12% { opacity: .2; }
+    18% { opacity: 1; scale: 1; }
+    30% { opacity: 0; }
+}
+@keyframes fx-zap-glow {
+    0%, 100% { box-shadow: 0 0 0 2px #FFE14D, 0 0 10px 2px rgba(255, 214, 0, .55); }
+    50% { box-shadow: 0 0 0 2px #FFF59D, 0 0 18px 5px rgba(255, 214, 0, .8); }
+}
+
+/* ---- Blazing fire ---- */
+.fx-fire > .mud-avatar { animation: fx-fire 0.9s infinite alternate; }
+@keyframes fx-fire {
+    0% { box-shadow: 0 0 0 2px #FF7043, 0 -4px 12px 3px rgba(255, 112, 67, .75), 0 -8px 18px 4px rgba(255, 193, 7, .45); }
+    100% { box-shadow: 0 0 0 2px #FFB74D, 0 -7px 16px 4px rgba(255, 87, 34, .85), 0 -12px 22px 6px rgba(255, 213, 79, .5); }
+}
+
+/* ---- Sparkles ---- */
+.fx-sparkles .fx { fill: #FFD54F; opacity: 0; animation: fx-twinkle 2s infinite; }
+.fx-sparkles .fx1 { top: -10%; left: 4%; animation-delay: 0s; }
+.fx-sparkles .fx2 { top: 10%; right: -14%; animation-delay: .5s; }
+.fx-sparkles .fx3 { bottom: -12%; right: 8%; animation-delay: 1s; }
+.fx-sparkles .fx4 { bottom: 14%; left: -16%; animation-delay: 1.5s; }
+@keyframes fx-twinkle { 0%, 100% { opacity: 0; transform: scale(.3) rotate(0); } 50% { opacity: 1; transform: scale(1) rotate(90deg); } }
+
+/* ---- Rainbow halo ---- */
+.fx-rainbow::before {
+    content: ''; position: absolute; inset: -5px; border-radius: 50%;
+    background: conic-gradient(#FF8A80, #FFD180, #FFFF8D, #B9F6CA, #80D8FF, #B388FF, #FF8A80);
+    animation: fx-spin 2.5s linear infinite;
+}
+@keyframes fx-spin { to { transform: rotate(360deg); } }
+
+/* ---- Frost aura ---- */
+.fx-frost > .mud-avatar { animation: fx-frost 2.2s infinite; }
+.fx-frost .fx { stroke: #B3E5FC; stroke-width: 2.4; fill: none; stroke-linecap: round; opacity: 0; animation: fx-twinkle 2.6s infinite; }
+.fx-frost .fx1 { top: -14%; right: -6%; animation-delay: .2s; }
+.fx-frost .fx2 { bottom: -12%; left: -8%; animation-delay: 1.4s; }
+@keyframes fx-frost {
+    0%, 100% { box-shadow: 0 0 0 2px #B3E5FC, 0 0 10px 3px rgba(129, 212, 250, .6); }
+    50% { box-shadow: 0 0 0 2px #E1F5FE, 0 0 18px 6px rgba(179, 229, 252, .9); }
+}
+
+/* ---- Floating hearts ---- */
+.fx-hearts .fx { fill: #F48FB1; opacity: 0; animation: fx-float 2.4s infinite; bottom: 0; }
+.fx-hearts .fx1 { left: -6%; animation-delay: 0s; }
+.fx-hearts .fx2 { right: -6%; animation-delay: .8s; }
+.fx-hearts .fx3 { left: 40%; animation-delay: 1.6s; }
+@keyframes fx-float { 0% { opacity: 0; transform: translateY(0) scale(.5); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-140%) scale(1); } }
+
+/* ---- Galaxy orbit ---- */
+.fx-galaxy > .mud-avatar { box-shadow: 0 0 0 2px #B388FF, 0 0 14px 3px rgba(124, 77, 255, .45); }
+.fx-galaxy .orbit { position: absolute; inset: -18%; border-radius: 50%; border: 1px dashed rgba(179, 136, 255, .55); animation: fx-spin 4s linear infinite; z-index: 2; pointer-events: none; }
+.fx-galaxy .orbit.o2 { inset: -6%; animation-duration: 2.6s; animation-direction: reverse; border-color: rgba(128, 216, 255, .5); }
+.fx-galaxy .orbit i { position: absolute; top: -4px; left: 50%; width: 8px; height: 8px; border-radius: 50%; background: #B388FF; box-shadow: 0 0 6px #B388FF; }
+.fx-galaxy .orbit.o2 i { background: #80D8FF; box-shadow: 0 0 6px #80D8FF; width: 6px; height: 6px; top: -3px; }

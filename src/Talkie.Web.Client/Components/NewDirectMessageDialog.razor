@@ -1,0 +1,32 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.Chat" Class="mr-2" Style="vertical-align:middle" />New direct message</MudText></TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Type the e-mail of the person you want to message.</MudText>
+        <UserPicker @bind-Value="_email" Label="E-mail" AutoFocus="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="string.IsNullOrWhiteSpace(_email) || _busy" OnClick="StartAsync">Start chat</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    private string? _email;
+    private bool _busy;
+
+    private async Task StartAsync()
+    {
+        _busy = true;
+        try
+        {
+            var conversation = await Api.PostAsync<ConversationDto>("/api/conversations/direct", new StartDirectMessageRequest(_email!));
+            MudDialog.Close(DialogResult.Ok(conversation));
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}

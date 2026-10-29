@@ -1,0 +1,159 @@
+@* The pencil button (admin@talkie.com only): configure the whole app. *@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.Edit" Color="Color.Primary" Class="mr-2" Style="vertical-align:middle" />Configure Talkie</MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (_settings is null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else
+        {
+            <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-4" Color="Color.Transparent">
+                <MudTabPanel Text="General" Icon="@Icons.Material.Rounded.Tune">
+                    <MudStack Spacing="3">
+                        <MudTextField @bind-Value="_settings.AppName" Label="App name" Variant="Variant.Outlined" MaxLength="100" />
+                        <MudTextField @bind-Value="_settings.Announcement" Label="Announcement banner" Variant="Variant.Outlined" Lines="2" MaxLength="500"
+                                      HelperText="Shown to everyone at the top of the app and on the login screen. Leave empty to hide." />
+                        <MudSwitch @bind-Value="_settings.AllowCompanyCreation" Color="Color.Primary" Label="Allow creating new companies" />
+                    </MudStack>
+                </MudTabPanel>
+                <MudTabPanel Text="Economy" Icon="@Icons.Material.Rounded.Savings">
+                    <MudGrid Spacing="2">
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.StartingMoney" Label="Starting money ($)" Variant="Variant.Outlined" Min="0L" /></MudItem>
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.StartingShards" Label="Starting shards" Variant="Variant.Outlined" Min="0L" /></MudItem>
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.AfkShardsPerMinute" Label="AFK shards per minute" Variant="Variant.Outlined" Min="0" /></MudItem>
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.AfkMaxHours" Label="AFK limit (hours, 0 = none)" Variant="Variant.Outlined" Min="0" /></MudItem>
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.MoneyPerShardBuy" Label="Price of 1 shard ($)" Variant="Variant.Outlined" Min="1L" /></MudItem>
+                        <MudItem xs="6"><MudNumericField @bind-Value="_settings.MoneyPerShardSell" Label="Value of 1 shard when sold ($)" Variant="Variant.Outlined" Min="1L" /></MudItem>
+                        <MudItem xs="4"><MudNumericField @bind-Value="_settings.CommonBoxPrice" Label="Common box ($)" Variant="Variant.Outlined" Min="1L" /></MudItem>
+                        <MudItem xs="4"><MudNumericField @bind-Value="_settings.RareBoxPrice" Label="Rare box ($)" Variant="Variant.Outlined" Min="1L" /></MudItem>
+                        <MudItem xs="4"><MudNumericField @bind-Value="_settings.ShardBoxPrice" Label="Shard box ($)" Variant="Variant.Outlined" Min="1L" /></MudItem>
+                    </MudGrid>
+                </MudTabPanel>
+                <MudTabPanel Text="Companies" Icon="@Icons.Material.Rounded.Business">
+                    <MudSimpleTable Dense="true" Hover="true" Elevation="0">
+                        <thead><tr><th>Company</th><th>Owner</th><th>Members</th><th>Created</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var c in _companies)
+                            {
+                                <tr>
+                                    <td><b>@c.Name</b></td>
+                                    <td>@c.OwnerEmail</td>
+                                    <td>@c.MemberCount</td>
+                                    <td>@c.CreatedAt.ToLocalTime().ToString("d MMM yyyy")</td>
+                                    <td style="text-align:right">
+                                        @if (c.Name != TalkieConstants.DefaultCompanyName)
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Rounded.Delete" Color="Color.Error" Size="Size.Small" OnClick="() => DeleteCompanyAsync(c)" aria-label="Delete company" />
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </MudSimpleTable>
+                </MudTabPanel>
+                <MudTabPanel Text="Grant" Icon="@Icons.Material.Rounded.Redeem">
+                    <MudText Color="Color.Secondary" Class="mb-3">Give (or take, with a negative number) money and shards to any user.</MudText>
+                    <MudStack Spacing="3">
+                        <UserPicker @bind-Value="_grantEmail" Label="User e-mail" />
+                        <div class="d-flex gap-3">
+                            <MudNumericField @bind-Value="_grantMoney" Label="Money" Variant="Variant.Outlined" />
+                            <MudNumericField @bind-Value="_grantShards" Label="Shards" Variant="Variant.Outlined" />
+                        </div>
+                        <div><MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Redeem" Disabled="string.IsNullOrWhiteSpace(_grantEmail)" OnClick="GrantAsync">Grant</MudButton></div>
+                    </MudStack>
+                </MudTabPanel>
+            </MudTabs>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Close</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveAsync" Disabled="_settings is null">Save settings</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+
+    private sealed class SettingsModel
+    {
+        public string AppName { get; set; } = "";
+        public string? Announcement { get; set; }
+        public bool AllowCompanyCreation { get; set; }
+        public long StartingMoney { get; set; }
+        public long StartingShards { get; set; }
+        public int AfkShardsPerMinute { get; set; }
+        public int AfkMaxHours { get; set; }
+        public long MoneyPerShardBuy { get; set; }
+        public long MoneyPerShardSell { get; set; }
+        public long CommonBoxPrice { get; set; }
+        public long RareBoxPrice { get; set; }
+        public long ShardBoxPrice { get; set; }
+    }
+
+    private SettingsModel? _settings;
+    private List<AdminCompanyDto> _companies = [];
+    private string? _grantEmail;
+    private long _grantMoney = 1000;
+    private long _grantShards;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var s = await Api.GetAsync<AppSettingsDto>("/api/admin/settings");
+            _settings = new SettingsModel
+            {
+                AppName = s.AppName, Announcement = s.Announcement, AllowCompanyCreation = s.AllowCompanyCreation,
+                StartingMoney = s.StartingMoney, StartingShards = s.StartingShards, AfkShardsPerMinute = s.AfkShardsPerMinute, AfkMaxHours = s.AfkMaxHours,
+                MoneyPerShardBuy = s.MoneyPerShardBuy, MoneyPerShardSell = s.MoneyPerShardSell,
+                CommonBoxPrice = s.CommonBoxPrice, RareBoxPrice = s.RareBoxPrice, ShardBoxPrice = s.ShardBoxPrice,
+            };
+            _companies = await Api.GetAsync<List<AdminCompanyDto>>("/api/admin/companies");
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task SaveAsync()
+    {
+        var s = _settings!;
+        try
+        {
+            await Api.PutAsync<AppSettingsDto>("/api/admin/settings", new AppSettingsDto(
+                s.AppName, s.Announcement, s.AllowCompanyCreation, s.StartingMoney, s.StartingShards, s.AfkShardsPerMinute, s.AfkMaxHours,
+                s.MoneyPerShardBuy, s.MoneyPerShardSell, s.CommonBoxPrice, s.RareBoxPrice, s.ShardBoxPrice));
+            Snackbar.Add("Settings saved.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task DeleteCompanyAsync(AdminCompanyDto company)
+    {
+        var confirm = await Dialogs.ShowMessageBoxAsync("Delete company", $"Delete {company.Name} with all {company.MemberCount} members, channels and messages?", yesText: "Delete", cancelText: "Cancel");
+        if (confirm != true) return;
+        try
+        {
+            await Api.DeleteAsync($"/api/admin/companies/{company.Id}");
+            _companies.Remove(company);
+            Snackbar.Add($"{company.Name} was deleted.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+
+    private async Task GrantAsync()
+    {
+        try
+        {
+            await Api.PostAsync("/api/admin/grant", new GrantRequest(_grantEmail!, _grantMoney, _grantShards));
+            Snackbar.Add($"Granted to {_grantEmail}.", Severity.Success);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+    }
+}

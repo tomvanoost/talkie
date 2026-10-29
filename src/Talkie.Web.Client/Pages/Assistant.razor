@@ -1,0 +1,131 @@
+@page "/assistant"
+@attribute [Authorize]
+@inject ApiClient Api
+@inject SessionState Session
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>Talkie – AI assistant</PageTitle>
+
+<div class="page" style="padding-bottom:0">
+    <div class="ai-shell">
+        <div class="page-title">
+            <MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Large" />
+            <div>
+                <MudText Typo="Typo.h4" Style="font-weight:800">AI assistant</MudText>
+                <MudText Color="Color.Secondary">Ask about your stats, how Talkie works, or search your chats.</MudText>
+            </div>
+            <MudSpacer />
+            @if (_messages.Count > 0)
+            {
+                <MudButton StartIcon="@Icons.Material.Rounded.DeleteSweep" Variant="Variant.Text" OnClick="ClearAsync">Clear chat</MudButton>
+            }
+        </div>
+
+        <div class="ai-messages" @ref="_scroller">
+            @if (_messages.Count == 0)
+            {
+                <div class="empty-chat" style="height:100%">
+                    <div class="ai-avatar" style="width:72px;height:72px"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Large" /></div>
+                    <MudText Typo="Typo.h6">Hi @Session.Me?.DisplayName, how can I help?</MudText>
+                    <div class="d-flex flex-wrap gap-2 justify-center mt-2">
+                        @foreach (var suggestion in Suggestions)
+                        {
+                            <MudChip T="string" Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => AskAsync(suggestion)">@suggestion</MudChip>
+                        }
+                    </div>
+                </div>
+            }
+            @foreach (var m in _messages)
+            {
+                <div class="bubble-row @m.Role">
+                    @if (m.Role == "assistant")
+                    {
+                        <div class="ai-avatar"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" /></div>
+                    }
+                    else
+                    {
+                        <UserAvatar Url="@Session.Me?.AvatarUrl" Name="@Session.Me?.DisplayName" Effect="@Session.Me?.ActiveEffect" Px="38" />
+                    }
+                    <div class="bubble markdown">@Markdown.Render(m.Content)</div>
+                </div>
+            }
+            @if (_thinking)
+            {
+                <div class="bubble-row assistant">
+                    <div class="ai-avatar"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" /></div>
+                    <div class="bubble typing"><span></span><span></span><span></span></div>
+                </div>
+            }
+        </div>
+
+        <div class="composer" style="padding-left:0;padding-right:0">
+            <div class="composer-box">
+                <div class="composer-row">
+                    <MudTextField T="string" @bind-Value="_input" Placeholder="Ask the assistant…" Variant="Variant.Text" Underline="false" Immediate="true"
+                                  OnKeyDown="OnKeyDown" Class="px-2" />
+                    <MudIconButton Icon="@Icons.Material.Rounded.Send" Color="Color.Primary" Variant="Variant.Filled" Disabled="_thinking || string.IsNullOrWhiteSpace(_input)" OnClick="() => AskAsync(_input)" Class="ma-1" aria-label="Send" />
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly string[] Suggestions = ["What can you do?", "Show my stats", "How do I go AFK?", "How do boxes work?", "Search welcome"];
+
+    private List<AiMessageDto> _messages = [];
+    private string _input = "";
+    private bool _thinking;
+    private bool _scroll;
+    private ElementReference _scroller;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _messages = await Api.GetAsync<List<AiMessageDto>>("/api/ai/history"); }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        _scroll = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scroll)
+        {
+            _scroll = false;
+            await JS.InvokeVoidAsync("talkie.scrollToBottom", _scroller, true);
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await AskAsync(_input);
+    }
+
+    private async Task AskAsync(string question)
+    {
+        question = question.Trim();
+        if (question.Length == 0 || _thinking) return;
+        _input = "";
+        _messages.Add(new AiMessageDto(Guid.NewGuid(), "user", question, DateTimeOffset.Now));
+        _thinking = true;
+        _scroll = true;
+        StateHasChanged();
+        try
+        {
+            var reply = await Api.PostAsync<AiMessageDto>("/api/ai/ask", new AiAskRequest(question));
+            _messages.Add(reply);
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally
+        {
+            _thinking = false;
+            _scroll = true;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        await Api.DeleteAsync("/api/ai/history");
+        _messages.Clear();
+    }
+}

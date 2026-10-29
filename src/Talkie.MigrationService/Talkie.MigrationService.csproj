@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup>
+    <UserSecretsId>talkie-migrations-9b1f2d3a</UserSecretsId>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Aspire.Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Talkie.ServiceDefaults\Talkie.ServiceDefaults.csproj" />
+    <ProjectReference Include="..\Talkie.Data\Talkie.Data.csproj" />
+  </ItemGroup>
+</Project>

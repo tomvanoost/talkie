@@ -1,0 +1,36 @@
+@inject ApiClient Api
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent><MudText Typo="Typo.h6"><MudIcon Icon="@Icons.Material.Rounded.Flag" Color="Color.Error" Class="mr-2" Style="vertical-align:middle" />Report a user</MudText></TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <UserPicker @bind-Value="_email" Label="User e-mail" AutoFocus="true" />
+            <MudTextField @bind-Value="_reason" Label="Reason" Variant="Variant.Outlined" Lines="4" MaxLength="1000" Counter="1000" Immediate="true"
+                          HelperText="Describe what happened. Only admin@talkie.com can see all reports." />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => MudDialog.Cancel()">Cancel</MudButton>
+        <MudButton Color="Color.Error" Variant="Variant.Filled" Disabled="string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_reason) || _busy" OnClick="SubmitAsync">Send report</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    private string? _email;
+    private string _reason = "";
+    private bool _busy;
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        try
+        {
+            var report = await Api.PostAsync<ReportDto>("/api/reports", new CreateReportRequest(_email!, _reason));
+            MudDialog.Close(DialogResult.Ok(report));
+        }
+        catch (ApiException ex) { Snackbar.Add(ex.Message, Severity.Error); }
+        finally { _busy = false; }
+    }
+}
